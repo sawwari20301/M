@@ -11,8 +11,8 @@
         a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
     </style>
     <title>لوحة تحكم المشرف العام | نادي مَتن</title>
-    <link rel="stylesheet" href="fonts.css?v=49">
-    <link rel="stylesheet" href="styles.css?v=49">
+    <link rel="stylesheet" href="fonts.css?v=50">
+    <link rel="stylesheet" href="styles.css?v=50">
     <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
 <body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
@@ -83,6 +83,7 @@
             <a href="recordings.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">التسجيلات المرئية</a>
             <a href="admin.html" class="block px-3 py-2.5 rounded-lg bg-matn-emerald/10 text-matn-emerald">بوابة الإشراف</a>
                     <a href="book.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">📖 كتاب الأسبوع</a>
+            <a href="live.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🔴 البث المباشر</a>
             <a href="polls.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🗳 التصويتات</a>
             <a href="archive.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🗂 أرشيف المذكرات</a>
             <a href="account.html#diary" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">📔 مذكرات الأعضاء</a>
@@ -271,6 +272,50 @@
             <p class="text-[10px] text-matn-muted">🔓 البوابة الحالية: تحويل بنكي + رفع إيصال. لاحقاً يمكن ربط بوابة دفع إلكترونية (مدى/فيزا) وتصبح العملية تلقائية.</p>
         </div>
 
+        <div data-need-perm="members" id="sec-points" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-bold font-amiri text-lg text-matn-emerald">🎯 نظام نقاط الولاء</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">حدّد كم نقطة تُمنح لكل نشاط — تُطبَّق فوراً على كل الأعضاء.</p>
+                </div>
+                <button type="button" data-action="save-points" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ نظام النقاط</button>
+            </div>
+            <div id="ptsSettings" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <label class="matn-field"><span>🎁 الرصيد الافتتاحي للعضو الجديد</span><input class="matn-input" id="ptSignup" type="number" step="1" min="0" placeholder="20"></label>
+                <label class="matn-field"><span>📔 كتابة مذكرة</span><input class="matn-input" id="ptDiary" type="number" step="1" placeholder="10"></label>
+                <label class="matn-field"><span>💬 إضافة تعليق أو رد</span><input class="matn-input" id="ptComment" type="number" step="1" placeholder="5"></label>
+                <label class="matn-field"><span>⏱ البقاء في الموقع (لكل ساعة)</span><input class="matn-input" id="ptHour" type="number" step="1" placeholder="5"></label>
+                <label class="matn-field"><span>🎟 الاشتراك في جلسة صالون (مرة لكل صالون)</span><input class="matn-input" id="ptSub" type="number" step="1" placeholder="15"></label>
+                <label class="matn-field"><span>⭐ تقييم تستلمه على مذكرتك</span><input class="matn-input" id="ptRate" type="number" step="1" placeholder="2"></label>
+            </div>
+            <div class="pt-2 border-t border-matn-sand/60 space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-[11px] font-bold text-matn-emerald">➕ أقسام نقاط إضافية (اختيارية)</span>
+                    <button type="button" data-action="pts-add-row" class="bg-white border border-dashed border-matn-sand hover:border-matn-gold text-matn-emerald px-3 py-2 rounded-xl text-[11px] font-bold transition">+ قسم نقاط</button>
+                </div>
+                <div id="ptsExtra" class="space-y-2"></div>
+            </div>
+            <p class="text-[10px] text-matn-muted">ملاحظات: يُمنح الاشتراك مرة واحدة لكل صالون، وإذا أُلغيت المشاركة تُسحب النقاط. وبعد وصول العضو 1000 نقطة تظهر له <strong>بطاقة شكر</strong> من النادي تلقائياً.</p>
+        </div>
+
+        <div data-need-perm="recording" id="sec-live" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-bold font-amiri text-lg text-matn-emerald">🔴 البث المباشر</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">رابط البث يظهر لعضو واحد في صفحة «البث المباشر» (وقائمة ☰ في كل الصفحات) — فعّله وقت الجلسة فقط.</p>
+                </div>
+                <button type="button" data-action="save-live" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ البث</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="matn-field sm:col-span-2"><span>عنوان البث</span><input class="matn-input" id="liveTitle" type="text" placeholder="جلسة الأربعاء: ثلاثية غرناطة"></label>
+                <label class="matn-field sm:col-span-2"><span>رابط البث (Zoom / YouTube / أي رابط)</span><input class="matn-input" id="liveUrl" type="url" dir="ltr" placeholder="https://..."></label>
+                <label class="matn-field"><span>الموعد</span><input class="matn-input" id="liveWhen" type="text" placeholder="الأربعاء 8:00 مساءً"></label>
+                <label class="flex items-center gap-2 text-xs self-end pb-3 cursor-pointer"><input type="checkbox" id="liveOn" class="accent-matn-emerald"> يُبَثّ الآن (يظهر زر المشاهدة)</label>
+                <label class="matn-field sm:col-span-2"><span>ملاحظة تظهر للزوار</span><textarea class="matn-input" id="liveNote" rows="2" placeholder="مثال: البث لمن حجز مقعده فقط."></textarea></label>
+            </div>
+            <p id="liveWarn" class="text-[11px] text-matn-muted"></p>
+        </div>
+
         <div data-need-perm="engage" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -325,6 +370,7 @@
                 <a href="booking.html" class="block py-1.5 text-white/70 hover:text-white transition">صالونات القراءة</a>
                 <a href="recordings.html" class="block py-1.5 text-white/70 hover:text-white transition">التسجيلات المرئية</a>
                 <a href="book.html" class="block py-1.5 text-white/70 hover:text-white transition">📖 كتاب الأسبوع</a>
+                <a href="live.html" class="block py-1.5 text-white/70 hover:text-white transition">🔴 البث المباشر</a>
                 <a href="polls.html" class="block py-1.5 text-white/70 hover:text-white transition">🗳 التصويتات</a>
                 <a href="archive.html" class="block py-1.5 text-white/70 hover:text-white transition">🗂 أرشيف المذكرات</a>
                 <a href="wallet.html" class="block py-1.5 text-white/70 hover:text-white transition">محفظة الولاء</a>
@@ -339,12 +385,12 @@
                 <a href="admin.html" class="block py-1.5 text-white/70 hover:text-white transition">بوابة الإشراف</a>
             </div>
         </div>
-        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 49</span></div>
+        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 50</span></div>
     </footer>
 
-    <script src="cloud-config.js?v=49" defer></script>
-    <script src="cloud.js?v=49" defer></script>
-    <script src="app.js?v=49" defer></script>
+    <script src="cloud-config.js?v=50" defer></script>
+    <script src="cloud.js?v=50" defer></script>
+    <script src="app.js?v=50" defer></script>
     <script>
         (function () {
             var btn = document.getElementById('menuBtn');

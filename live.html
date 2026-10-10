@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="البث المباشر لجلسات نادي مَتن: شاهد الجلسة وقت انعقادها، أو تابع التسجيلات السابقة.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23234e3d'/%3E%3Ctext x='32' y='45' font-size='36' text-anchor='middle' fill='%23dfbe7e' font-family='serif'%3E%D9%85%3C/text%3E%3C/svg%3E">
+    <style>
+        html { -webkit-text-size-adjust: 100%; }
+        a, button { -webkit-tap-highlight-color: rgba(197,160,89,.35); }
+        a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
+    </style>
+    <title>🔴 البث المباشر | نادي مَتن</title>
+    <link rel="stylesheet" href="fonts.css?v=50">
+    <link rel="stylesheet" href="styles.css?v=50">
+    <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
+</head>
+<body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
+
+    <div data-ad-bar class="bg-matn-emeraldDark px-4 py-2.5 border-b border-matn-emerald/40">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-center">
+            <span class="inline-block w-2 h-2 rounded-full bg-matn-gold animate-pulse shrink-0"></span>
+            <div data-ad-slot class="text-center"></div>
+        </div>
+    </div>
+
+    <header class="matn-safe-top sticky top-0 z-50 bg-matn-cream/95 backdrop-blur-md border-b border-matn-sand/60">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between gap-4">
+            <a href="index.html" class="flex items-center gap-3 shrink-0">
+                <span class="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-matn-gold flex items-center justify-center bg-white shadow-sm">
+                    <span class="font-amiri font-bold text-matn-emerald text-xl leading-none">مَتن</span>
+                </span>
+                <span class="hidden sm:block">
+                    <span class="font-amiri text-2xl font-bold text-matn-emerald tracking-wide block leading-none">نادي مَتن</span>
+                    <span class="text-[10px] text-matn-muted tracking-wider block mt-1">للقراءة والحوار الثقافي</span>
+                </span>
+            </a>
+
+            <nav class="hidden lg:flex items-center gap-6 text-sm font-semibold text-matn-charcoal">
+                <a href="index.html" class="py-2 text-matn-emerald border-b-2 border-matn-emerald">الرئيسية</a>
+                <a href="booking.html" class="py-2 hover:text-matn-emerald transition">صالونات القراءة</a>
+                <a href="wallet.html" class="py-2 hover:text-matn-emerald transition">محفظة الولاء</a>
+                <a href="partners.html" class="py-2 hover:text-matn-emerald transition">دليل الشركاء</a>
+                <a href="recordings.html" class="py-2 hover:text-matn-emerald transition">التسجيلات المرئية</a>
+                <a href="admin.html" class="py-2 hover:text-matn-emerald transition text-matn-muted">بوابة الإشراف</a>
+            </nav>
+
+            <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                <div class="relative shrink-0">
+                    <button type="button" id="bellBtn" data-action="bell" title="التنبيهات" aria-label="التنبيهات" class="hidden relative w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-matn-creamDark border border-matn-sand text-xs sm:text-sm shadow-sm hover:border-matn-gold transition">🔔<span id="bellCount" class="hidden absolute -top-1 -left-1 bg-red-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1"></span></button>
+                    <div id="bellMenu" class="hidden absolute left-0 mt-2 w-[19rem] max-w-[calc(100vw-2rem)] bg-white border border-matn-sand rounded-2xl shadow-xl p-3 z-50 text-right"></div>
+                </div>
+                <a href="account.html" id="acctChip" title="حسابي" class="flex items-center gap-1.5 sm:gap-2 bg-matn-creamDark border border-matn-sand px-2 sm:px-3.5 py-1.5 rounded-full text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition whitespace-nowrap">
+                    <span class="hidden sm:block w-2.5 h-2.5 rounded-full bg-matn-gold shrink-0"></span>
+                    <span data-matn-points>دخول</span>
+                </a>
+                <a href="booking.html" class="hidden sm:inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition">انضم لصالون</a>
+                <div class="relative">
+                    <button type="button" data-action="toggle-branches" aria-haspopup="true" class="flex items-center gap-1 sm:gap-1.5 bg-white border border-matn-sand px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-matn-gold shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>
+                        <span class="hidden sm:inline">فروعنا</span> <span class="hidden sm:inline text-[10px] text-matn-muted">▾</span>
+                    </button>
+                    <div id="branchesMenu" class="hidden absolute top-full left-0 mt-2 w-72 max-w-[85vw] max-h-80 overflow-auto bg-white border border-matn-sand rounded-2xl shadow-xl p-2 space-y-1" data-branches-menu></div>
+                </div>
+                <div class="relative hidden sm:block">
+                    <button type="button" data-action="toggle-diaries" aria-haspopup="true" class="flex items-center gap-1 sm:gap-1.5 bg-white border border-matn-sand px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
+                        <span class="text-base leading-none">📔</span> <span class="hidden sm:inline">المذكرات</span> <span class="hidden sm:inline text-[10px] text-matn-muted">▾</span>
+                    </button>
+                    <div id="diaryMenu" class="hidden absolute top-full left-0 mt-2 w-72 max-w-[85vw] max-h-80 overflow-auto bg-white border border-matn-sand rounded-2xl shadow-xl p-2 space-y-1 text-right" data-diary-menu></div>
+                </div>
+                <button id="menuBtn" type="button" aria-label="القائمة" aria-controls="mobileNav" aria-expanded="false" class="lg:hidden w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl border border-matn-sand bg-white text-matn-emerald shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <nav id="mobileNav" class="hidden lg:hidden border-t border-matn-sand/60 bg-matn-cream px-4 py-3 space-y-1 text-sm font-semibold">
+            <a href="account.html" data-nav-acct class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">حسابي / دخول</a>
+            <a href="index.html" class="block px-3 py-2.5 rounded-lg bg-matn-emerald/10 text-matn-emerald">الرئيسية</a>
+            <a href="booking.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">صالونات القراءة</a>
+            <a href="wallet.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">محفظة الولاء</a>
+            <a href="book.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">📖 كتاب الأسبوع</a>
+            <a href="live.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🔴 البث المباشر</a>
+            <a href="polls.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🗳 التصويتات</a>
+            <a href="archive.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🗂 أرشيف المذكرات</a>
+            <a href="account.html#diary" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">📔 مذكرات الأعضاء</a>
+            <a href="partners.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">دليل الشركاء</a>
+            <a href="recordings.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">التسجيلات المرئية</a>
+            <a href="admin.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition text-matn-muted">بوابة الإشراف</a>
+        </nav>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 py-8 flex-1 w-full space-y-6">
+
+        <section id="liveBox" class="bg-matn-cream rounded-3xl border border-matn-sand shadow-sm p-5 sm:p-6"></section>
+
+        <section class="bg-white rounded-3xl border border-matn-sand shadow-sm p-5 space-y-3">
+            <h2 class="font-amiri text-xl font-bold text-matn-emerald">كيف تحضر الجلسة؟</h2>
+            <ol class="text-xs text-matn-muted leading-relaxed space-y-2 list-decimal pr-5">
+                <li>احجز مقعدك من صفحة <a href="booking.html" class="text-matn-emerald font-bold hover:underline">صالونات القراءة</a>.</li>
+                <li>إن كانت الجلسة مدفوعة: حوّل المبلغ بنكياً وارفع الإيصال، ثم يُفعَّل اشتراكك بعد التأكيد.</li>
+                <li>وقت الجلسة يظهر هنا زر <strong>«شاهد البث المباشر»</strong>، ويظهر رابط الاجتماع الخاص للمحجوزين في صفحة الصالون.</li>
+                <li>لم تستطع الحضور؟ التسجيل الكامل في <a href="recordings.html" class="text-matn-emerald font-bold hover:underline">التسجيلات المرئية</a>.</li>
+            </ol>
+            <a href="polls.html" class="inline-block text-[11px] font-bold text-matn-emerald hover:underline">🗳 صوّت لموضوع الجلسة القادمة ›</a>
+        </section>
+
+    </main>
+
+    <footer class="matn-safe-bottom mt-auto bg-matn-emeraldDark text-white border-t border-matn-emerald">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4 text-xs">
+            <div class="space-y-2">
+                <div class="font-amiri text-xl text-matn-goldLight">نادي مَتن</div>
+                <p class="text-white/70 leading-relaxed max-w-xs">ملاذ فكري للقراء: نلتقي حول كتاب، ونغادر بفكرة.</p>
+            </div>
+            <div class="space-y-2">
+                <div class="font-bold text-matn-goldLight mb-1">الأقسام</div>
+                <a href="booking.html" class="block py-1.5 text-white/70 hover:text-white transition">صالونات القراءة</a>
+                <a href="recordings.html" class="block py-1.5 text-white/70 hover:text-white transition">التسجيلات المرئية</a>
+                <a href="wallet.html" class="block py-1.5 text-white/70 hover:text-white transition">محفظة الولاء</a>
+                <a href="book.html" class="block py-1.5 text-white/70 hover:text-white transition">📖 كتاب الأسبوع</a>
+                <a href="live.html" class="block py-1.5 text-white/70 hover:text-white transition">🔴 البث المباشر</a>
+                <a href="polls.html" class="block py-1.5 text-white/70 hover:text-white transition">🗳 التصويتات</a>
+                <a href="archive.html" class="block py-1.5 text-white/70 hover:text-white transition">🗂 أرشيف المذكرات</a>
+            </div>
+            <div class="space-y-2">
+                <div class="font-bold text-matn-goldLight mb-1">فروعنا</div>
+                <div data-footer-branches class="space-y-1.5 text-white/80"></div>
+            </div>
+            <div class="space-y-2">
+                <div class="font-bold text-matn-goldLight mb-1">الشركاء والإشراف</div>
+                <a href="partners.html" class="block py-1.5 text-white/70 hover:text-white transition">دليل الشركاء</a>
+                <a href="admin.html" class="block py-1.5 text-white/70 hover:text-white transition">بوابة الإشراف</a>
+            </div>
+        </div>
+        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 50</span></div>
+    </footer>
+
+    <script src="cloud-config.js?v=50" defer></script>
+    <script src="cloud.js?v=50" defer></script>
+    <script src="app.js?v=50" defer></script>
+    <script>
+        (function () {
+            var btn = document.getElementById('menuBtn');
+            var nav = document.getElementById('mobileNav');
+            if (!btn || !nav) return;
+            btn.addEventListener('click', function () {
+                var opened = nav.classList.toggle('hidden') === false;
+                btn.setAttribute('aria-expanded', String(opened));
+            });
+        })();
+    </script>
+</body>
+</html>

@@ -498,9 +498,8 @@
             b2.payStatus = ok ? 'confirmed' : 'rejected';
             b2.reviewedAt = new Date().toISOString();
             if (ok) {
-                d2.accounts[uname].points = (d2.accounts[uname].points || 0) + 20;
-                d2.accounts[uname].ledger = d2.accounts[uname].ledger || [];
-                d2.accounts[uname].ledger.unshift({ reason: 'اشتراك مؤكد في جلسة صالون', points: 20, at: new Date().toISOString() });
+                award(uname, 'subscribe', 'اشتراك مؤكد في جلسة صالون', 1, d2);
+                d2.accounts[uname].bookings[sid].pointsGiven = pts(d2).subscribe;
             } else {
                 delete d2.accounts[uname].bookings[sid];
             }
@@ -976,8 +975,8 @@
             d.accounts[uname] = {
                 name: String(name || '').trim() || uname,
                 hash: hash,
-                points: 340,                       // رصيد ترحيبي
-                ledger: [{ reason: 'رصيد ترحيبي عند التسجيل', points: 340, at: new Date().toISOString() }],
+                points: pts(d).signup,             // الرصيد الافتتاحي (يُضبط من اللوحة)
+                ledger: [{ reason: 'رصيد افتتاحي عند التسجيل', points: pts(d).signup, at: new Date().toISOString() }],
                 vouchers: [], bookings: {},
                 avatar: '', minutes: 0,
                 isAdmin: first,                  // أول حساب = المشرف
@@ -1978,6 +1977,15 @@
         }
         var s = load();
         if (!s.booking) return;
+        var dBefore = fullDoc();
+        var bk0 = dBefore.authUser && dBefore.accounts[dBefore.authUser] ? (dBefore.accounts[dBefore.authUser].bookings || {}) : {};
+        var cur0 = s.salon ? bk0[s.salon.id] : null;
+        if (cur0 && cur0.payStatus === 'confirmed' && cur0.pointsGiven) {
+            var dd0 = fullDoc();
+            award(dd0.authUser, 'subscribe', 'إلغاء اشتراك — سحب نقاط الاشتراك', -1, dd0);
+            saveDoc(dd0);
+            toast('سُحبت ' + num(cur0.pointsGiven) + ' نقطة (إلغاء الاشتراك)', 'info');
+        }
         change(function (st) {
             if (st.myBookings && st.salon) delete st.myBookings[st.salon.id];
             st.booking = null;
@@ -2578,11 +2586,33 @@
 
             var ml = document.getElementById('adminMemberList');
             if (ml) {
+                var roleOf = function (u) {
+                    var a = D.accounts[u] || {};
+                    if (a.super) return 0;
+                    if (a.isAdmin || (a.perms && a.perms.length)) return 1;
+                    if (a.system) return 2;
+                    return 3;
+                };
+                users.sort(function (x, y) {
+                    var rx = roleOf(x), ry = roleOf(y);
+                    if (rx !== ry) return rx - ry;
+                    return (D.accounts[y].points || 0) - (D.accounts[x].points || 0);
+                });
+                var roleNames = ['المشرف العام', 'المديرون', 'الدعم الفني', 'الأعضاء'];
+                var lastRole = -1;
                 ml.innerHTML = users.length ? users.map(function (u) {
                     var a = D.accounts[u];
+                    var rGroup = roleOf(u);
+                    var head = '';
+                    if (rGroup !== lastRole) {
+                        lastRole = rGroup;
+                        var cnt0 = users.filter(function (x) { return roleOf(x) === rGroup; }).length;
+                        head = '<li class="mt-3 pt-2 border-t-2 border-matn-gold/40 text-[11px] font-bold text-matn-gold flex items-center justify-between">' +
+                            '<span>' + roleNames[rGroup] + '</span><span class="text-matn-muted">' + num(cnt0) + '</span></li>';
+                    }
                     var role = a.system ? 'الدعم الفني' : (a.super ? 'المشرف العام' : ((a.perms && a.perms.length) ? 'مدير' : 'عضو'));
                     var roleCls = a.super ? 'bg-matn-gold/25 text-matn-emerald' : ((a.perms && a.perms.length) ? 'bg-emerald-100 text-emerald-800' : 'bg-matn-creamDark text-matn-muted');
-                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
+                    return head + '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
                         '<span><strong class="' + (a.suspended ? 'line-through text-matn-muted' : '') + '">' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
                         ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ' + roleCls + '">' + role + '</span>' +
                         (a.demo ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">تجريبي</span>' : '') +
@@ -2612,7 +2642,7 @@
                                 ' <button type="button" data-allperm="1" data-uname="' + esc(u) + '" class="px-2 py-1 rounded-lg border border-matn-gold text-matn-emerald text-[11px] font-bold transition">جعله مديراً</button>' +
                                 '<button type="button" data-allperm="0" data-uname="' + esc(u) + '" class="px-2 py-1 rounded-lg border border-matn-sand text-red-700 text-[11px] font-bold transition">سحب الكل</button>') +
                         '</div></li>';
-                }).join('') : '<li class="text-matn-muted py-2">لا يوجد أعضاء مسجّلون بعد.</li>';
+                }, '').join('') : '<li class="text-matn-muted py-2">لا يوجد أعضاء مسجّلون بعد.</li>';
                 ml.querySelectorAll('[data-perm]').forEach(function (b) {
                     b.addEventListener('click', function () { togglePerm(b.getAttribute('data-uname'), b.getAttribute('data-perm')); });
                 });
@@ -2780,6 +2810,11 @@
         renderHomePoll(s);
         renderBadWords(s);
         renderHeaderAdAdmin(s);
+        renderPointsSettings(s);
+        checkThanksCard(s);
+        renderLive(s);
+        renderLiveAdmin(s);
+        wireAdminAccordion();
         renderHeaderAd(s);
         renderMyDiary(s);
         renderDiaryWall(s);
@@ -3401,6 +3436,189 @@
         if (n >= 3 && n <= 10) return 'مذكرات';
         return 'مذكرة';
     }
+    /* ============ 🎯 نظام نقاط الولاء (قابل للضبط من اللوحة) ============ */
+    var PTS_DEFAULT = { signup: 20, diary: 10, comment: 5, hour: 5, subscribe: 15, rating: 2 };
+    function pts(d) {
+        var p = (d && d.points) || {};
+        var out = {};
+        Object.keys(PTS_DEFAULT).forEach(function (k) {
+            var v = parseInt(p[k], 10);
+            out[k] = isFinite(v) ? v : PTS_DEFAULT[k];
+        });
+        out.extra = Array.isArray(p.extra) ? p.extra.map(function (x) {
+            return { id: x.id || ('px-' + rnd(4)), label: String(x.label || '').trim(), value: parseInt(x.value, 10) || 0 };
+        }).filter(function (x) { return x.label; }) : [];
+        return out;
+    }
+    /* منح نقاط مع تسجيلها في السجل (يستخدم القيمة المضبوطة لحظياً) */
+    function award(u, key, reason, times, d) {
+        var dd = d || fullDoc();
+        var a = dd.accounts[u];
+        if (!a) return 0;
+        var val = pts(dd)[key];
+        if (typeof val !== 'number') return 0;
+        var amount = val * (typeof times === 'number' ? times : 1);
+        if (!amount) return 0;
+        a.points = Math.max(0, (a.points || 0) + amount);
+        a.ledger = a.ledger || [];
+        a.ledger.unshift({ reason: reason, points: amount, at: new Date().toISOString() });
+        return amount;
+    }
+    function savePointsSettings() {
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
+        var g = function (id) { var e = document.getElementById(id); return e ? parseInt(e.value, 10) : NaN; };
+        var d = fullDoc();
+        var extra = [];
+        document.querySelectorAll('#ptsExtra [data-pex-row]').forEach(function (r) {
+            var l = r.querySelector('[data-pex-label]'), v = r.querySelector('[data-pex-value]');
+            var label = l ? l.value.trim() : '';
+            if (label) extra.push({ id: 'px-' + rnd(4), label: label, value: parseInt(v ? v.value : 0, 10) || 0 });
+        });
+        d.points = {
+            signup: isFinite(g('ptSignup')) ? g('ptSignup') : PTS_DEFAULT.signup,
+            diary: isFinite(g('ptDiary')) ? g('ptDiary') : PTS_DEFAULT.diary,
+            comment: isFinite(g('ptComment')) ? g('ptComment') : PTS_DEFAULT.comment,
+            hour: isFinite(g('ptHour')) ? g('ptHour') : PTS_DEFAULT.hour,
+            subscribe: isFinite(g('ptSub')) ? g('ptSub') : PTS_DEFAULT.subscribe,
+            rating: isFinite(g('ptRate')) ? g('ptRate') : PTS_DEFAULT.rating,
+            extra: extra
+        };
+        saveDoc(d); state = null; render();
+        toast('حُفظ نظام النقاط', 'ok');
+    }
+    function ptsExtraRowHtml(x) {
+        return '<div data-pex-row class="flex flex-wrap items-center gap-2 bg-matn-cream rounded-xl border border-matn-sand p-2">' +
+            '<input class="matn-input flex-1 min-w-[8rem]" data-pex-label type="text" placeholder="اسم القسم — مثال: مراجعة كتاب" value="' + esc(x.label || '') + '">' +
+            '<input class="matn-input w-24" data-pex-value type="number" step="1" placeholder="نقاط" value="' + (x.value || 0) + '">' +
+            '<button type="button" data-action="pts-del-row" class="text-red-700 text-[11px] font-bold hover:underline">حذف</button></div>';
+    }
+    function renderPointsSettings(s) {
+        var box = document.getElementById('ptsSettings');
+        if (!box) return;
+        if (document.activeElement && box.contains(document.activeElement)) return;
+        var p = pts(fullDoc());
+        var set = function (id, v) { var e = document.getElementById(id); if (e) e.value = v; };
+        set('ptSignup', p.signup); set('ptDiary', p.diary); set('ptComment', p.comment);
+        set('ptHour', p.hour); set('ptSub', p.subscribe); set('ptRate', p.rating);
+        var ex = document.getElementById('ptsExtra');
+        if (ex) ex.innerHTML = p.extra.map(ptsExtraRowHtml).join('') || '<div class="text-[11px] text-matn-muted">لا أقسام إضافية — اضغط «+ قسم نقاط» لإضافة قسم (مثال: مراجعة كتاب = 20 نقطة).</div>';
+    }
+
+    /* ============ 🎉 بطاقة شكر عند 1000 نقطة ============ */
+    function checkThanksCard(s) {
+        if (!s.signedIn || !s.user || !s.user.username) return;
+        var d = fullDoc();
+        var a = d.accounts[d.authUser];
+        if (!a || a.system) return;
+        if ((a.points || 0) < 1000 || a.thanks1k) return;
+        a.thanks1k = true; a.thanks1kAt = new Date().toISOString();
+        saveDoc(d);
+        var nm = a.name || d.authUser;
+        modal({
+            title: '🎉 بطاقة شكر',
+            body: '<div class="text-center space-y-3">' +
+                    '<div class="text-5xl">🏅</div>' +
+                    '<div class="font-amiri text-2xl font-bold text-matn-emerald">نادي مَتن للقراءة والحوار</div>' +
+                    '<div class="text-xs text-matn-muted">يشكر العضو الكريم</div>' +
+                    '<div class="text-lg font-bold text-matn-gold">' + esc(nm) + '</div>' +
+                    '<p class="text-xs leading-relaxed text-matn-charcoal bg-matn-cream border border-matn-sand rounded-2xl p-3">' +
+                        'على تفاعله وحضوره المستمر معنا. وصل رصيدك إلى <strong class="text-matn-emerald">' + num(a.points) + ' نقطة</strong>، ' +
+                        'وهي شهادة نعتزّ بها على وفائك للنادي وقراءتك معنا.' +
+                    '</p>' +
+                    '<div class="matn-gold-frame inline-flex items-center gap-2 bg-matn-creamDark px-4 py-2 font-bold text-matn-emerald">' +
+                        '<span>رصيدك الآن:</span><span class="text-matn-gold">' + num(a.points) + ' نقطة</span>' +
+                        '<span class="matn-cnr" aria-hidden="true"></span>' +
+                    '</div>' +
+                    '<div class="text-[10px] text-matn-muted">مع تحيات ' + esc('إدارة نادي مَتن') + ' · ' + esc(fmtDate(new Date().toISOString())) + '</div>' +
+                '</div>',
+            footer: '<button type="button" class="bg-matn-emerald text-white px-5 py-2.5 rounded-xl text-xs font-bold" data-ok="1">شكراً لكم 🌿</button>'
+        });
+    }
+
+    /* ============ 🔴 البث المباشر ============ */
+    function saveLive() {
+        if (!needPerm('recording', 'التسجيلات والبث')) return;
+        var q = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+        var on = document.getElementById('liveOn');
+        var d = fullDoc();
+        d.live = {
+            title: q('liveTitle'), url: safeLink(q('liveUrl')) || '',
+            when: q('liveWhen'), note: q('liveNote'),
+            on: on ? !!on.checked : false, at: new Date().toISOString()
+        };
+        saveDoc(d); state = null; render();
+        toast(d.live.on ? 'البث مُفعّل ويظهر للزوار' : 'حُفظ البث (غير مُفعّل)', 'ok');
+    }
+    function renderLiveAdmin(s) {
+        var t = document.getElementById('liveTitle');
+        if (!t) return;
+        if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#sec-live')) return;
+        var l = liveInfo(fullDoc());
+        t.value = l.title;
+        var u = document.getElementById('liveUrl'); if (u) u.value = l.url || '';
+        var w = document.getElementById('liveWhen'); if (w) w.value = l.when || '';
+        var n = document.getElementById('liveNote'); if (n) n.value = l.note || '';
+        var o = document.getElementById('liveOn'); if (o) o.checked = !!l.on;
+        var warn = document.getElementById('liveWarn');
+        if (warn) {
+            var ok = l.on && safeLink(l.url);
+            warn.textContent = ok ? '🔴 البث ظاهر الآن للأعضاء.' : (l.url ? 'البث جاهز — فعّل «يُبَثّ الآن» وقت الجلسة.' : 'أضف رابط البث أولاً.');
+            warn.className = 'text-[11px] ' + (ok ? 'text-red-600 font-bold' : 'text-matn-muted');
+        }
+    }
+    function liveInfo(d) {
+        var l = (d && d.live) || {};
+        return { title: l.title || '', url: l.url || '', on: l.on === true, when: l.when || '', note: l.note || '' };
+    }
+    function renderLive(s) {
+        var box = document.getElementById('liveBox');
+        if (!box) return;
+        var d = fullDoc();
+        var l = liveInfo(d);
+        var lk = safeLink(l.url);
+        var st = l.on && lk;
+        box.innerHTML =
+            '<div class="flex flex-wrap items-center justify-between gap-3">' +
+                '<div>' +
+                    '<div class="text-[11px] font-bold tracking-[.25em] text-matn-gold">من قلب الجلسة</div>' +
+                    '<h1 class="font-amiri text-3xl font-bold text-matn-emerald mt-1">🔴 البث المباشر</h1>' +
+                '</div>' +
+                (st ? '<span class="flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-full px-3 py-1"><span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>يُبَثّ الآن</span>'
+                    : '<span class="text-xs font-bold text-matn-muted bg-matn-creamDark border border-matn-sand rounded-full px-3 py-1">لا يوجد بث الآن</span>') +
+            '</div>' +
+            '<p class="text-xs text-matn-muted mt-3">' + (l.title ? esc(l.title) : (st ? 'جلسة مباشرة من صالون مَتن' : 'تابعنا هنا وقت الجلسات — يظهر البث تلقائياً عند بدايته.')) + '</p>' +
+            (l.when ? '<p class="text-[11px] text-matn-muted mt-1">🕐 ' + esc(l.when) + '</p>' : '') +
+            (l.note ? '<p class="text-[11px] text-matn-charcoal bg-matn-cream border border-matn-sand rounded-xl px-3 py-2 mt-2 whitespace-pre-line">' + esc(l.note) + '</p>' : '') +
+            (st
+                ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-4 bg-red-600 hover:bg-red-700 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg transition">▶ شاهد البث المباشر الآن</a>'
+                : '<a href="recordings.html" class="inline-block mt-4 bg-white border border-matn-sand hover:border-matn-gold text-matn-charcoal px-5 py-3 rounded-xl text-xs font-bold transition">شاهد التسجيلات السابقة ›</a>') +
+            '<p class="text-[10px] text-matn-muted mt-3">لمن حجز مقعده: رابط الجلسة الخاصة يظهر في صفحة «صالونات القراءة».</p>';
+    }
+
+    /* ============ 🗂 القوائم المنسدلة في لوحة التحكم ============ */
+    function wireAdminAccordion() {
+        if (!document.getElementById('adminMemberList')) return;
+        document.querySelectorAll('main > div[data-need-perm], main > div[id^="sec-"]').forEach(function (sec) {
+            if (sec.dataset.acc) return;
+            sec.dataset.acc = '1';
+            var head = sec.firstElementChild;
+            if (!head) return;
+            head.classList.add('matn-sec-head', 'cursor-pointer', 'select-none');
+            var h = (head.tagName === 'H2') ? head : head.querySelector('h2');
+            if (h && !h.querySelector('.matn-chev')) {
+                var ch = document.createElement('span');
+                ch.className = 'matn-chev inline-block mr-2 text-matn-gold transition-transform';
+                ch.textContent = '▾';
+                h.insertBefore(ch, h.firstChild);
+            }
+            head.addEventListener('click', function (e) {
+                if (e.target.closest('button, a, input, select, textarea, label')) return;
+                sec.classList.toggle('matn-sec-collapsed');
+            });
+            sec.classList.add('matn-sec-collapsed');
+        });
+    }
+
     /* ============ 📢 إعلان الترويسة (من اللوحة) ============ */
     var AD_DEFAULT = 'الصالون الثقافي العربي المعاصر • نلتقي حول كتاب، ونغادر بفكرة.';
     var AD_EVERY = 4000;                 /* مدة بقاء كل إعلان: 4 ثوانٍ */
@@ -4149,12 +4367,14 @@
         if (!acc.diary) acc.diary = [];
         acc.diary.unshift({ id: 'dy-' + rnd(6), text: t, at: new Date().toISOString(), public: isPublic !== false, ratings: {}, comments: [] });
         if (isPublic !== false) {
-            acc.points = (acc.points || 0) + 10;
-            acc.ledger = acc.ledger || [];
-            acc.ledger.unshift({ reason: 'نشر مذكرة في الأجندة', points: 10, at: new Date().toISOString() });
+            var got = award(d.authUser, 'diary', 'نشر مذكرة في الأجندة', 1, d);
+            saveDoc(d); state = null; refresh();
+            toast('أُضيفت مذكرتك' + (got ? (' (+' + num(got) + ' نقاط)') : ''), 'ok');
+            checkThanksCard(load());
+            return true;
         }
         saveDoc(d); state = null; refresh();
-        toast('أُضيفت مذكرتك' + (isPublic !== false ? ' (+10 نقاط)' : ' (خاصة)'), 'ok');
+        toast('أُضيفت مذكرتك (خاصة)', 'ok');
         return true;
     }
     function editDiary(eid) {
@@ -4210,7 +4430,7 @@
         e.ratings[d.authUser] = stars;
         saveDoc(d); state = null;
         var own = d.accounts[u];
-        if (own) { own.points = (own.points || 0) + 2; }   /* نقطتان لصاحبة المذكرة */
+        if (own) { award(u, 'rating', 'تقييم استلمته على مذكرة', 1, d); }   /* نقاط التقييم لصاحبة المذكرة */
         saveDoc(d);
         refresh(); closeModal(); window.setTimeout(function () { openDiary(u, eid); }, 150);
         toast('شكراً لتقييمك (' + stars + ' ★)', 'ok');
@@ -4229,6 +4449,7 @@
             id: 'dc-' + rnd(6), user: d.authUser, name: (d.accounts[d.authUser] || {}).name || d.authUser,
             text: t, at: new Date().toISOString(), approved: false, reported: 0, hide: false
         });
+        award(d.authUser, 'comment', 'تعليق على مذكرة', 1, d);
         saveDoc(d);
         pushNotice([u], '💬 تعليق جديد على مذكرتك بانتظار موافقتك — من ' + ((d.accounts[d.authUser] || {}).name || d.authUser), 'comment', d.authUser);
         state = null; refresh();
@@ -4480,8 +4701,11 @@
             var d = fullDoc();
             var u = d.authUser;
             if (!u || !d.accounts[u] || d.accounts[u].system) return;
-            d.accounts[u].minutes = (d.accounts[u].minutes || 0) + 1;
-            saveDoc(d);
+            var before = d.accounts[u].minutes || 0;
+            d.accounts[u].minutes = before + 1;
+            if ((before + 1) % 60 === 0) award(u, 'hour', 'ساعة تواجد في الموقع', 1, d);
+            saveDoc(d); state = null;
+            if ((before + 1) % 60 === 0) { render(); checkThanksCard(load()); }
         }, 60000);
     }
     function renderExcellence(s) {
@@ -4720,6 +4944,22 @@
         else if (a === 'save-pay') savePaySettings();
         else if (a === 'save-badwords') saveBadWords();
         else if (a === 'save-ad') saveHeaderAd();
+        else if (a === 'save-points') savePointsSettings();
+        else if (a === 'save-live') saveLive();
+        else if (a === 'pts-add-row') {
+            var pe = document.getElementById('ptsExtra');
+            if (pe) {
+                if (pe.querySelector('.text-matn-muted')) pe.innerHTML = '';
+                var t = document.createElement('div');
+                t.innerHTML = ptsExtraRowHtml({ label: '', value: 0 });
+                pe.appendChild(t.firstChild);
+            }
+        }
+        else if (a === 'pts-del-row') {
+            var pr = el.closest('[data-pex-row]');
+            if (pr && pr.parentNode) pr.parentNode.removeChild(pr);
+        }
+        else if (a === 'thanks-ok') { closeModal(); }
         else if (a === 'ad-add-row') {
             var box0 = document.getElementById('adRows');
             if (box0) {
