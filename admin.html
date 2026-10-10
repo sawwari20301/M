@@ -78,6 +78,10 @@
                 <a href="account.html" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-5 py-2.5 rounded-xl text-xs font-bold transition">تسجيل الدخول / حساب جديد</a>
                 <a href="index.html" class="bg-white border border-matn-sand hover:border-matn-gold px-5 py-2.5 rounded-xl text-xs font-bold transition">العودة للرئيسية</a>
             </div>
+            <div id="gateClaim" class="hidden pt-4 mt-2 border-t border-matn-sand text-right">
+                <p class="text-[11px] text-matn-muted leading-relaxed mb-2">لا يوجد مشرف عام على هذا المتصفح بعد. إن كنت مالك النادي، ثبّت حسابك الحالي مشرفاً عاماً بصلاحية كاملة على كل المزايا:</p>
+                <button type="button" data-action="claim-admin" class="bg-matn-gold hover:bg-matn-goldLight text-matn-emeraldDark px-5 py-2.5 rounded-xl text-xs font-bold shadow transition">تعيين حسابي مشرفاً عاماً</button>
+            </div>
         </div>
 
         <div class="flex flex-wrap gap-3 justify-between items-center">
@@ -92,6 +96,14 @@
         </div>
 
         <div id="adminNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl px-4 py-3 leading-relaxed"></div>
+
+        <div id="adminIdentity" class="bg-matn-emerald text-white rounded-3xl p-6 shadow-sm"></div>
+
+        <section class="bg-white rounded-3xl border border-matn-sand shadow-sm p-6">
+            <h2 class="font-bold font-amiri text-lg text-matn-emerald">كل مزايا لوحة التحكم</h2>
+            <p class="text-xs text-matn-muted mt-1 mb-4">متاحة كاملة لحساب المشرف العام — اضغط أي ميزة للانتقال إليها.</p>
+            <div id="adminFeatures" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+        </section>
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
@@ -116,46 +128,21 @@
             </div>
         </div>
 
-        <div id="adminNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl px-4 py-3 leading-relaxed"></div>
-
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
-                <div class="text-xs text-matn-muted">إجمالي القراء</div>
-                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2">4,850</div>
-                <div class="text-[11px] text-emerald-700 mt-1 font-semibold">↑ +14.2% هذا الشهر</div>
-            </div>
-            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
-                <div class="text-xs text-matn-muted">المشرفون والميسرون</div>
-                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2">24</div>
-                <div class="text-[11px] text-matn-muted mt-1">عبر 7 فروع ومدن</div>
-            </div>
-            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
-                <div class="text-xs text-matn-muted">الصالونات المعتمدة</div>
-                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2">38</div>
-                <div class="text-[11px] text-matn-gold font-semibold mt-1">نسبة الحضور 94%</div>
-            </div>
-            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
-                <div class="text-xs text-matn-muted">نقاط الولاء المصروفة</div>
-                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2" id="statSpent">5,420</div>
-                <div class="text-[11px] text-matn-muted mt-1">رصيد إدارة متاح للتحفيز</div>
-            </div>
-        </div>
-
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-                <h2 class="font-bold font-amiri text-lg text-matn-emerald">الشركاء في الدليل</h2>
+                <h2 id="sec-partners" class="font-bold font-amiri text-lg text-matn-emerald">الشركاء في الدليل</h2>
                 <p class="text-[11px] text-matn-muted">أي شريك تضيفه يظهر فوراً في صفحة «دليل الشركاء».</p>
                 <ul id="adminPartnerList" class="text-xs"></ul>
             </div>
             <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-                <h2 class="font-bold font-amiri text-lg text-matn-emerald">قسائم الشحن</h2>
+                <h2 id="sec-codes" class="font-bold font-amiri text-lg text-matn-emerald">قسائم الشحن</h2>
                 <p class="text-[11px] text-matn-muted">القسائم المتاحة والقابلة للشحن من صفحة المحفظة.</p>
                 <ul id="adminCodeList" class="text-xs"></ul>
             </div>
         </div>
 
         <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 class="font-bold font-amiri text-lg text-matn-emerald">التسجيل المرئي للجلسة</h2>
+            <h2 id="sec-recording" class="font-bold font-amiri text-lg text-matn-emerald">التسجيل المرئي للجلسة</h2>
             <p class="text-[11px] text-matn-muted">ضع رابط ملف فيديو مباشر (‎.mp4‎ أو ‎.webm‎) ليُشغَّل في صفحة التسجيلات.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label class="matn-field"><span>عنوان التسجيل</span><input class="matn-input" id="recTitle" type="text" placeholder="أمسية الفلسفة والفكر"></label>
@@ -166,7 +153,7 @@
         </div>
 
         <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 class="font-bold font-amiri text-lg text-matn-emerald">الجلسة القادمة</h2>
+            <h2 id="sec-session" class="font-bold font-amiri text-lg text-matn-emerald">الجلسة القادمة</h2>
             <p class="text-[11px] text-matn-muted">ما تعدّله هنا يظهر فوراً في الصفحة الرئيسية وصفحة الحجز.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label class="matn-field sm:col-span-2"><span>عنوان الجلسة</span><input class="matn-input" id="seTitle" type="text"></label>
@@ -180,20 +167,20 @@
         </div>
 
         <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 class="font-bold font-amiri text-lg text-matn-emerald">الأعضاء</h2>
-            <p class="text-[11px] text-matn-muted">كل من سجّل في الموقع. يمكنك منح النقاط أو ترقية عضو لمشرف.</p>
+            <h2 id="sec-members" class="font-bold font-amiri text-lg text-matn-emerald">الأعضاء</h2>
+            <p class="text-[11px] text-matn-muted">كل من سجّل في الموقع — منح/خصم نقاط · ترقية أو إزالة مشرف · إلغاء حجزه · كلمة مرور جديدة · حذف العضو.</p>
             <ul id="adminMemberList" class="text-xs"></ul>
         </div>
 
         <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 class="font-bold font-amiri text-lg text-matn-emerald">الحجوزات</h2>
+            <h2 id="sec-bookings" class="font-bold font-amiri text-lg text-matn-emerald">الحجوزات</h2>
             <ul id="adminBookingList" class="text-xs"></ul>
         </div>
 
         <div class="bg-white rounded-3xl border border-matn-sand shadow-sm overflow-hidden">
             <div class="p-5 sm:p-6 border-b border-matn-sand/60 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 class="font-bold font-amiri text-lg text-matn-emerald">موقع الفرع</h2>
+                    <h2 id="sec-map" class="font-bold font-amiri text-lg text-matn-emerald">موقع الفرع</h2>
                     <p class="text-xs text-matn-muted mt-1">صالون مَتن - فرع الياسمين / Zoom VIP</p>
                 </div>
                 <a href="https://www.google.com/maps/search/?api=1&query=24.816944,46.636111" target="_blank" rel="noopener" class="text-xs font-bold text-matn-emerald bg-matn-creamDark border border-matn-sand px-4 py-2.5 rounded-xl hover:border-matn-gold transition">افتح في خرائط Google ↗</a>

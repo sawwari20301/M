@@ -73,7 +73,7 @@
 
         <div id="acctSignedIn" class="hidden bg-white p-6 rounded-3xl border border-matn-sand shadow-sm space-y-4">
             <h1 class="font-bold font-amiri text-2xl text-matn-emerald">حسابي</h1>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div class="p-4 bg-matn-cream rounded-xl border border-matn-sand">
                     <div class="text-matn-muted">الاسم</div><div class="font-bold mt-1" data-acct-name>—</div>
                 </div>
@@ -83,11 +83,15 @@
                 <div class="p-4 bg-matn-cream rounded-xl border border-matn-sand">
                     <div class="text-matn-muted">رصيد النقاط</div><div class="font-bold mt-1" data-matn-points-only>0</div>
                 </div>
+                <div class="p-4 bg-matn-cream rounded-xl border border-matn-sand">
+                    <div class="text-matn-muted">الصفة</div><div class="font-bold mt-1" data-acct-role>عضو</div>
+                </div>
             </div>
             <div class="flex flex-wrap gap-2 pt-1">
                 <a href="wallet.html" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-5 py-2.5 rounded-xl text-xs font-bold transition">محفظة الولاء</a>
                 <a href="booking.html" class="bg-white border border-matn-sand hover:border-matn-gold px-5 py-2.5 rounded-xl text-xs font-bold transition">صالونات القراءة</a>
                 <button type="button" data-action="signout" class="bg-white border border-matn-sand hover:border-red-300 text-red-700 px-5 py-2.5 rounded-xl text-xs font-bold transition">تسجيل الخروج</button>
+                <a href="admin.html" id="acctAdminLink" class="hidden bg-matn-gold hover:bg-matn-goldLight text-matn-emeraldDark px-5 py-2.5 rounded-xl text-xs font-bold shadow transition">لوحة التحكم ←</a>
             </div>
         </div>
 

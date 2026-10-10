@@ -98,6 +98,7 @@
     function load() {
         if (state) return state;
         var d = doc();
+        migrateSuper(d);
         var acc = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
         state = {
             signedIn: !!acc,
@@ -105,7 +106,8 @@
                 username: acc ? d.authUser : null,
                 name: acc ? (acc.name || d.authUser) : '',
                 points: acc ? (typeof acc.points === 'number' ? acc.points : 340) : 0,
-                isAdmin: !!(acc && acc.isAdmin)
+                isAdmin: !!(acc && acc.isAdmin),
+                super: !!(acc && acc.super)
             },
             salon: d.salon || seedDoc().salon,
             seatsLeft: typeof d.seatsLeft === 'number' ? d.seatsLeft : SESSION.seats,
@@ -184,13 +186,15 @@
         var d = doc();
         if (d.accounts[uname]) return Promise.reject({ code: 'USERNAME_TAKEN' });
         return sha256(String(pass)).then(function (hash) {
+            var first = Object.keys(d.accounts).length === 0;
             d.accounts[uname] = {
                 name: String(name || '').trim() || uname,
                 hash: hash,
                 points: 340,                       // رصيد ترحيبي
                 ledger: [{ reason: 'رصيد ترحيبي عند التسجيل', points: 340, at: new Date().toISOString() }],
                 vouchers: [], booking: null,
-                isAdmin: Object.keys(d.accounts).length === 0,   // أول حساب = المشرف
+                isAdmin: first,                  // أول حساب = المشرف
+                super: first,                    // وهو «المشرف العام» دائماً
                 createdAt: new Date().toISOString()
             };
             d.authUser = uname;
@@ -233,6 +237,116 @@
         fn(d.accounts[uname], d);
         saveDoc(d);
         state = null; load(); render();
+    }
+
+    /* ---------- المشرف العام ----------
+       أول حساب مسجّل في الموقع يحمل super=true. للحسابات القديمة (قبل إضافة
+       الخاصية) نرقّي أول مشرف تلقائياً — والعملية حسابية لا تحفظ شيئاً إن لم تلزم. */
+    function migrateSuper(d) {
+        var admins = Object.keys(d.accounts || {}).filter(function (u) { return d.accounts[u].isAdmin; });
+        if (!admins.length) return;
+        if (admins.some(function (u) { return d.accounts[u].super; })) return;
+        d.accounts[admins[0]].super = true;
+        saveDoc(d);
+    }
+    function superName() {
+        var d = doc();
+        var admins = Object.keys(d.accounts).filter(function (u) { return d.accounts[u].isAdmin; });
+        return admins.filter(function (u) { return d.accounts[u].super; })[0] || admins[0] || null;
+    }
+    function hasAdmin() {
+        var d = doc();
+        return Object.keys(d.accounts).some(function (u) { return d.accounts[u].isAdmin; });
+    }
+    function freeSeat(d) {
+        var cap = (d.salon && d.salon.capacity) || SESSION.seats;
+        var cur = typeof d.seatsLeft === 'number' ? d.seatsLeft : cap;
+        d.seatsLeft = Math.min(cap, cur + 1);
+    }
+
+    /* نافذة تأكيد */
+    function confirmBox(title, text, onYes, label) {
+        var id = 'cf' + Math.random().toString(36).slice(2, 8);
+        modal({
+            title: title,
+            body: '<p class="text-xs text-matn-muted leading-relaxed">' + esc(text) + '</p>',
+            footer: '<button type="button" id="' + id + '" class="bg-red-700 hover:bg-red-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">' + esc(label || 'تأكيد') + '</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#' + id).addEventListener('click', function () { closeModal(); onYes(); });
+            }
+        });
+    }
+
+    /* حذف عضو (وإلغاء حجزه) */
+    function removeMember(uname) {
+        if (!adminOnly('لوحة الإشراف')) return;
+        var d = doc();
+        var a = d.accounts[uname];
+        if (!a) return;
+        if (a.super) { toast('لا يمكن حذف المشرف العام.', 'error'); return; }
+        var booked = !!a.booking;
+        confirmBox('حذف العضو', 'سيُحذف حساب «' + a.name + '» نهائياً' + (booked ? '، ويُلغى حجزه ويُفرغ مقعده' : '') + '. لا يمكن التراجع.', function () {
+            if (booked) freeSeat(d);
+            delete d.accounts[uname];
+            if (d.authUser === uname) d.authUser = null;
+            saveDoc(d); state = null; load(); render();
+            toast('حُذف العضو', 'ok');
+        }, 'حذف نهائي');
+    }
+
+    /* إلغاء حجز عضو من اللوحة */
+    function cancelBookingFor(uname) {
+        if (!adminOnly('لوحة الإشراف')) return;
+        var d = doc();
+        var a = d.accounts[uname];
+        if (!a || !a.booking) return;
+        confirmBox('إلغاء الحجز', 'سيُلغى حجز «' + a.name + '» (تذكرة ' + a.booking.code + ') ويُفرغ المقعد.', function () {
+            a.booking = null;
+            freeSeat(d);
+            saveDoc(d); state = null; load(); render();
+            toast('أُلغي الحجز وأُفرغ المقعد', 'ok');
+        }, 'إلغاء الحجز');
+    }
+
+    /* تعيين كلمة مرور جديدة لعضو */
+    function resetPassword(uname) {
+        if (!adminOnly('لوحة الإشراف')) return;
+        var d = doc();
+        var a = d.accounts[uname];
+        if (!a) return;
+        modal({
+            title: 'كلمة مرور جديدة',
+            body: '<p class="text-xs text-matn-muted leading-relaxed mb-3">للعضو <strong class="text-matn-charcoal">' + esc(a.name) + '</strong> (@' + esc(uname) + ').</p>' +
+                  '<label class="matn-field"><span>كلمة المرور الجديدة</span><input class="matn-input" id="rpVal" type="text" placeholder="6 أحرف على الأقل"></label>' +
+                  '<p id="rpMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="rpGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">تعيين</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#rpGo').addEventListener('click', function () {
+                    var v = w.querySelector('#rpVal').value;
+                    var m = w.querySelector('#rpMsg');
+                    if (!v || String(v).length < 6) { m.textContent = 'كلمة المرور 6 أحرف على الأقل.'; m.className = 'text-xs text-red-700'; return; }
+                    sha256(String(v)).then(function (h) {
+                        updateAccount(uname, function (acc) { acc.hash = h; });
+                        closeModal();
+                        toast('عُيّنت كلمة مرور جديدة للعضو', 'ok');
+                    });
+                });
+            }
+        });
+    }
+
+    /* استعادة الإشراف العام (يظهر فقط إذا لم يوجد أي مشرف على المتصفح) */
+    function claimSuperAdmin() {
+        if (CLOUD) { toast('هذه الميزة في الوضع المحلي فقط.', 'info'); return; }
+        if (needsLogin()) { requireLogin('تعيين مشرف عام'); return; }
+        if (hasAdmin()) { toast('يوجد مشرف عام بالفعل على هذا المتصفح.', 'error'); return; }
+        var d = doc();
+        var u = d.authUser;
+        if (!u || !d.accounts[u]) return;
+        d.accounts[u].isAdmin = true;
+        d.accounts[u].super = true;
+        saveDoc(d); state = null; load(); render();
+        toast('أصبحت المشرف العام — كل مزايا اللوحة متاحة لك', 'ok');
     }
 
     /* ---------- إجراءات لوحة التحكم ---------- */
@@ -299,6 +413,7 @@
         var a = d.accounts[uname];
         if (!a) return;
         var admins = Object.keys(d.accounts).filter(function (u) { return d.accounts[u].isAdmin; });
+        if (a.super) { toast('المشرف العام لا يمكن تجريده من الإشراف.', 'error'); return; }
         if (a.isAdmin && admins.length === 1) { toast('لا يمكن إزالة الإشراف عن المشرف الوحيد.', 'error'); return; }
         updateAccount(uname, function (acc) { acc.isAdmin = !acc.isAdmin; });
         toast(a.isAdmin ? 'أُزيل الإشراف' : 'تمت الترقية لمشرف', 'ok');
@@ -701,7 +816,11 @@
             if (s.signedIn) {
                 var nEl = siBox.querySelector('[data-acct-name]'); if (nEl) nEl.textContent = s.user.name || '—';
                 var uEl = siBox.querySelector('[data-acct-user]'); if (uEl) uEl.textContent = s.user.username || '—';
+                var rEl = siBox.querySelector('[data-acct-role]');
+                if (rEl) rEl.textContent = s.user.super ? 'المشرف العام' : (s.user.isAdmin ? 'مشرف' : 'عضو');
             }
+            var admLink = document.getElementById('acctAdminLink');
+            if (admLink) admLink.classList.toggle('hidden', !(s.signedIn && s.user.isAdmin));
         }
 
         /* بوابة العضوية (المحفظة + لوحة الإشراف) */
@@ -712,6 +831,11 @@
             gate.classList.toggle('hidden', !locked);
             var gTitle = gate.querySelector('h2');
             if (gTitle) gTitle.textContent = (isAdminPage && s.signedIn) ? 'هذه الصفحة للمشرف' : 'هذه الصفحة للأعضاء';
+            var claimBox = document.getElementById('gateClaim');
+            if (claimBox) {
+                var canClaim = !CLOUD && !!isAdminPage && s.signedIn && !s.user.isAdmin && !hasAdmin();
+                claimBox.classList.toggle('hidden', !canClaim);
+            }
             Array.prototype.forEach.call(gate.parentElement.children, function (ch) {
                 if (ch !== gate) ch.classList.toggle('hidden', locked);
             });
@@ -847,13 +971,16 @@
             if (ml) {
                 ml.innerHTML = users.length ? users.map(function (u) {
                     var a = D.accounts[u];
-                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-2 border-b border-matn-sand/60">' +
+                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
                         '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
-                        (a.isAdmin ? ' <span class="bg-matn-gold/20 text-matn-emerald text-[10px] font-bold px-1.5 py-0.5 rounded">مشرف</span>' : '') + '</span>' +
+                        (a.super ? ' <span class="bg-matn-gold/25 text-matn-emerald text-[10px] font-bold px-1.5 py-0.5 rounded">المشرف العام</span>' : (a.isAdmin ? ' <span class="bg-matn-gold/20 text-matn-emerald text-[10px] font-bold px-1.5 py-0.5 rounded">مشرف</span>' : '')) + '</span>' +
                         '<span class="flex flex-wrap items-center gap-3">' +
                             '<span class="font-bold text-matn-emerald">' + num(a.points) + ' نقطة</span>' +
-                            '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح نقاط</button>' +
-                            '<button type="button" data-tgadmin="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">' + (a.isAdmin ? 'إزالة الإشراف' : 'ترقية لمشرف') + '</button>' +
+                            '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح / خصم</button>' +
+                            (a.super ? '' : '<button type="button" data-tgadmin="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">' + (a.isAdmin ? 'إزالة الإشراف' : 'ترقية لمشرف') + '</button>') +
+                            (a.booking ? '<button type="button" data-cxl="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">إلغاء الحجز</button>' : '') +
+                            '<button type="button" data-rp="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">كلمة مرور</button>' +
+                            (a.super ? '' : '<button type="button" data-del="' + esc(u) + '" class="text-red-700 font-bold hover:underline">حذف</button>') +
                         '</span></li>';
                 }).join('') : '<li class="text-matn-muted py-2">لا يوجد أعضاء مسجّلون بعد.</li>';
                 ml.querySelectorAll('[data-grant]').forEach(function (b) {
@@ -861,6 +988,15 @@
                 });
                 ml.querySelectorAll('[data-tgadmin]').forEach(function (b) {
                     b.addEventListener('click', function () { toggleAdmin(b.getAttribute('data-tgadmin')); });
+                });
+                ml.querySelectorAll('[data-cxl]').forEach(function (b) {
+                    b.addEventListener('click', function () { cancelBookingFor(b.getAttribute('data-cxl')); });
+                });
+                ml.querySelectorAll('[data-rp]').forEach(function (b) {
+                    b.addEventListener('click', function () { resetPassword(b.getAttribute('data-rp')); });
+                });
+                ml.querySelectorAll('[data-del]').forEach(function (b) {
+                    b.addEventListener('click', function () { removeMember(b.getAttribute('data-del')); });
                 });
             }
 
@@ -874,6 +1010,50 @@
                         '<span class="text-matn-muted">' + esc(fmtDate(b.at)) + '</span></span></li>';
                 });
                 bl.innerHTML = rows.length ? rows.join('') : '<li class="text-matn-muted py-2">لا توجد حجوزات بعد.</li>';
+            }
+
+            /* بطاقة المشرف العام */
+            var ident = document.getElementById('adminIdentity');
+            if (ident) {
+                var supU = users.filter(function (u) { return D.accounts[u].super; })[0] ||
+                           users.filter(function (u) { return D.accounts[u].isAdmin; })[0];
+                var supA = supU ? D.accounts[supU] : null;
+                var adminsCount = users.filter(function (u) { return D.accounts[u].isAdmin; }).length;
+                ident.innerHTML =
+                    '<div class="flex flex-wrap items-center justify-between gap-4">' +
+                        '<div>' +
+                            '<div class="text-[11px] text-matn-goldLight font-bold tracking-widest">المشرف العام</div>' +
+                            '<div class="font-amiri text-2xl font-bold mt-1">' + esc(supA ? supA.name : 'لا يوجد بعد') + '</div>' +
+                            '<div class="text-xs text-white/70 mt-1">' + (supU ? ('@' + esc(supU) + ' · صلاحية كاملة على كل مزايا اللوحة') : 'أنشئ حساباً لتثبيت المشرف العام') + '</div>' +
+                        '</div>' +
+                        '<div class="text-center">' +
+                            '<div class="text-[11px] text-white/70">المشرفون</div>' +
+                            '<div class="font-amiri text-3xl font-bold">' + num(adminsCount) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    (s.signedIn && s.user.isAdmin
+                        ? '<div class="mt-4 text-xs bg-white/10 rounded-2xl px-4 py-3 leading-relaxed">تدير الموقع الآن بحساب المشرف العام — <strong>' + esc(s.user.name || s.user.username) + '</strong>. كل عمليات اللوحة متاحة لك.</div>'
+                        : '');
+            }
+
+            /* شبكة كل المزايا */
+            var feats = document.getElementById('adminFeatures');
+            if (feats) {
+                var list = [
+                    ['الجلسة القادمة', 'العنوان والموعد والميسّر والمكان وعدد المقاعد', 'sec-session'],
+                    ['الأعضاء', 'منح وخصم النقاط · الإشراف · كلمة مرور جديدة · حذف العضو', 'sec-members'],
+                    ['الحجوزات', 'كل حجز باسم صاحبه ورقم تذكرته وتاريخه', 'sec-bookings'],
+                    ['الشركاء', 'إضافة شريك أو حذفه من دليل الشركاء', 'sec-partners'],
+                    ['قسائم الشحن', 'توليد قسيمة شحن ونشرها للأعضاء', 'sec-codes'],
+                    ['التسجيل المرئي', 'عنوان التسجيل ورابط ملف الفيديو', 'sec-recording'],
+                    ['موقع الفرع', 'الخريطة ورابط الفتح في خرائط Google', 'sec-map']
+                ];
+                feats.innerHTML = list.map(function (f) {
+                    return '<a href="#' + f[2] + '" class="block bg-matn-cream border border-matn-sand rounded-2xl p-4 hover:border-matn-gold transition">' +
+                        '<div class="font-bold text-sm text-matn-emerald">' + f[0] +
+                            ' <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">متاح ✓</span></div>' +
+                        '<div class="text-[11px] text-matn-muted mt-1 leading-relaxed">' + f[1] + '</div></a>';
+                }).join('');
             }
         }
 
@@ -958,6 +1138,7 @@
         else if (a === 'play-recording') playRecording();
         else if (a === 'save-recording') saveRecording();
         else if (a === 'save-session') saveSalon();
+        else if (a === 'claim-admin') claimSuperAdmin();
         else if (a === 'signout') standaloneSignOut();
     });
 
