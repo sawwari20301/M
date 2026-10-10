@@ -50,6 +50,63 @@
         return 'https://' + t;
     }
 
+    function safeImg(u) {
+        var t = String(u === null || u === undefined ? '' : u).trim();
+        if (!t) return '';
+        if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(t)) return t;
+        if (/^data:/i.test(t)) return '';
+        return safeUrl(t);
+    }
+    /* ضغط الصورة في المتصفح قبل حفظها (كي لا تتجاوز مساحة التخزين) */
+    function compressImage(file, maxDim, quality) {
+        return new Promise(function (resolve, reject) {
+            try {
+                var fr = new FileReader();
+                fr.onload = function () {
+                    var img = new Image();
+                    img.onload = function () {
+                        try {
+                            var sc = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+                            var cw = Math.max(1, Math.round((img.width || 1) * sc));
+                            var ch = Math.max(1, Math.round((img.height || 1) * sc));
+                            var c = document.createElement('canvas');
+                            c.width = cw; c.height = ch;
+                            var ctx = c.getContext('2d');
+                            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+                            ctx.drawImage(img, 0, 0, cw, ch);
+                            var out = c.toDataURL('image/jpeg', quality);
+                            if (out.length > 800000) out = c.toDataURL('image/jpeg', 0.6);
+                            if (out.length > 1100000) out = c.toDataURL('image/jpeg', 0.45);
+                            resolve(out);
+                        } catch (e) { reject(e); }
+                    };
+                    img.onerror = function () { reject(new Error('BAD_IMAGE')); };
+                    img.src = String(fr.result);
+                };
+                fr.onerror = function () { reject(new Error('READ_FAIL')); };
+                fr.readAsDataURL(file);
+            } catch (e) { reject(e); }
+        });
+    }
+    /* تكبير الصورة بالضغط المطوّل */
+    function showZoom(src) {
+        if (!src) return;
+        var ov = document.getElementById('matnZoom');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'matnZoom';
+            ov.className = 'matn-zoom';
+            ov.innerHTML = '<img alt="صورة مكبّرة"><div class="matn-zoom-hint">أفلت إصبعك للرجوع</div>';
+            document.body.appendChild(ov);
+        }
+        ov.querySelector('img').src = src;
+        ov.classList.add('is-on');
+    }
+    function hideZoom() {
+        var ov = document.getElementById('matnZoom');
+        if (ov) ov.classList.remove('is-on');
+    }
+
     /* ---------- التذكير بالموعد ---------- */
     var REMIND_OPTS = [15, 30, 60, 120, 180, 1440];
     function remindLabel(m) {
@@ -208,6 +265,7 @@
             salons: [{
                 id: 'salon-1', title: SESSION.title, when: SESSION.when, where: SESSION.where,
                 facilitator: SESSION.facilitator, capacity: SESSION.seats, featured: true,
+                desc: '', mode: 'hybrid', link: '', startsAt: '', reminderMin: 60, poster: '',
                 at: new Date().toISOString()
             }],
             seatsLeft: SESSION.seats,
@@ -277,6 +335,8 @@
             if (typeof x.link !== 'string') { x.link = ''; dirty = true; }
             if (typeof x.startsAt !== 'string') { x.startsAt = ''; dirty = true; }
             if (!(x.reminderMin > 0)) { x.reminderMin = 60; dirty = true; }
+            if (typeof x.desc !== 'string') { x.desc = ''; dirty = true; }
+            if (typeof x.poster !== 'string') { x.poster = ''; dirty = true; }
         });
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
@@ -682,6 +742,15 @@
                         '</div>' +
                         '<p class="text-[10px] text-matn-muted mt-2 leading-relaxed">بدون هذا الحقل لا يظهر العدّ التنازلي في الرئيسية ولا يُرسل أي تذكير.</p>' +
                     '</div>' +
+                    '<label class="matn-field sm:col-span-2"><span>📝 وصف الجلسة (يظهر تحت العنوان — لك حرية كتابته لكل صالون)</span><textarea class="matn-input" id="sfDesc" rows="3" placeholder="اكتب سطرين عن الجلسة، ومن يدير النقاش…">' + esc(v.desc || '') + '</textarea></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>🖼 صورة الكتاب / الإعلان (تظهر أعلى يسار البطاقة — اضغط عليها مطوّلاً لتكبر)</span>' +
+                        '<input class="matn-input" id="sfPoster" type="url" value="' + (v.poster && v.poster.indexOf('data:') !== 0 ? esc(v.poster) : '') + '" placeholder="https://example.com/cover.jpg">' +
+                        '<input type="file" id="sfFile" accept="image/*" class="hidden">' +
+                        '<div class="flex flex-wrap items-center gap-2 mt-2">' +
+                            '<button type="button" id="sfPick" class="matn-preset">📁 اختر صورة من جهازك</button>' +
+                            '<button type="button" id="sfRm" class="matn-preset">إزالة الصورة</button>' +
+                            '<img id="sfPrev" alt="" class="' + (v.poster ? '' : 'hidden ') + 'w-16 h-20 object-cover rounded-lg border border-matn-sand" src="' + esc(v.poster || '') + '">' +
+                        '</div></span></label>' +
                     '<label class="matn-field"><span>⏰ التذكير قبل الموعد</span><select class="matn-input" id="sfRemind">' +
                         REMIND_OPTS.map(function (m) {
                             return '<option value="' + m + '"' + ((v.reminderMin || 60) === m ? ' selected' : '') + '>' + remindLabel(m) + '</option>';
@@ -700,6 +769,34 @@
                   '</div><p id="sfMsg" class="text-xs"></p>',
             footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
             ready: function (w) {
+                var posterVal = safeImg(v.poster || '');
+                var prev = w.querySelector('#sfPrev');
+                var showPrev = function (url) {
+                    if (url) { prev.src = url; prev.classList.remove('hidden'); }
+                    else { prev.removeAttribute('src'); prev.classList.add('hidden'); }
+                };
+                w.querySelector('#sfPick').addEventListener('click', function () { w.querySelector('#sfFile').click(); });
+                w.querySelector('#sfFile').addEventListener('change', function (ev) {
+                    var f = ev.target.files && ev.target.files[0];
+                    if (!f) return;
+                    var m = w.querySelector('#sfMsg');
+                    m.textContent = 'جارٍ تجهيز الصورة…'; m.className = 'text-xs text-matn-muted';
+                    compressImage(f, 900, 0.82).then(function (url) {
+                        posterVal = url;
+                        w.querySelector('#sfPoster').value = '';
+                        showPrev(url);
+                        m.textContent = 'حُضّرت الصورة — اضغط حفظ.'; m.className = 'text-xs text-emerald-700';
+                    }).catch(function () {
+                        m.textContent = 'تعذّر قراءة الصورة — جرّب صورة أخرى.'; m.className = 'text-xs text-red-700';
+                    });
+                });
+                w.querySelector('#sfPoster').addEventListener('input', function (e) {
+                    posterVal = safeImg(e.target.value);
+                    showPrev(posterVal);
+                });
+                w.querySelector('#sfRm').addEventListener('click', function () {
+                    posterVal = ''; w.querySelector('#sfPoster').value = ''; showPrev('');
+                });
                 w.querySelectorAll('[data-preset]').forEach(function (b) {
                     b.addEventListener('click', function () {
                         var days = parseInt(b.getAttribute('data-preset'), 10) || 0;
@@ -730,6 +827,8 @@
                     var data = {
                         title: t,
                         when: whenTxt,
+                        desc: (w.querySelector('#sfDesc').value || '').trim(),
+                        poster: posterVal,
                         facilitator: w.querySelector('#sfFac').value.trim(),
                         where: w.querySelector('#sfWhere').value.trim(),
                         capacity: cap,
@@ -745,7 +844,7 @@
                         doc2.salons.push(data);
                     } else {
                         var t2 = salonById(doc2, id);
-                        if (t2) { t2.title = data.title; t2.when = data.when; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; }
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; }
                     }
                     saveDoc(doc2);
                     closeModal(); refresh();
@@ -1466,6 +1565,26 @@
         document.querySelectorAll('[data-session-facilitator]').forEach(function (el) { if (salon.facilitator) el.textContent = salon.facilitator; });
         document.querySelectorAll('[data-session-mode]').forEach(function (el) { el.textContent = modeLabel(salon.mode); });
 
+        /* صورة الصالون — أعلى يسار البطاقة، والضغط المطوّل يكبّرها */
+        document.querySelectorAll('[data-poster-box]').forEach(function (box) {
+            var img = box.querySelector('[data-poster-img]');
+            var p = safeImg(salon.poster);
+            if (p && img) {
+                img.setAttribute('src', p);
+                img.setAttribute('data-zoom', p);
+                box.classList.remove('hidden');
+            } else {
+                box.classList.add('hidden');
+            }
+        });
+
+        /* وصف الجلسة — نص يكتبه المشرف لكل صالون؛ يُخفى إن تُرك فارغاً */
+        document.querySelectorAll('[data-session-desc]').forEach(function (el) {
+            var tx = String(salon.desc || '').trim();
+            if (tx) { el.textContent = tx; el.classList.remove('hidden'); }
+            else { el.textContent = ''; el.classList.add('hidden'); }
+        });
+
         /* عدّاد تنازلي عام على بطاقة الصالون — يراه الجميع */
         document.querySelectorAll('[data-session-countdown]').forEach(function (el) {
             var cd = countdown(salon.startsAt);
@@ -1723,7 +1842,9 @@
                         '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
                         '<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + modeLabel(x.mode) + '</span>' +
                             (safeUrl(x.link) ? ' · <span class="text-matn-muted">رابط الاجتماع محفوظ (يراه المحجوزون فقط)</span>' : ' · <span class="text-matn-muted">لا يوجد رابط اجتماع</span>') + '</div>' +
-                        '<div class="text-[11px] mt-0.5 text-matn-muted">' + (x.startsAt
+                        '<div class="text-[11px] mt-0.5 text-matn-muted">' + (String(x.desc || '').trim() ? '📝 الوصف مكتوب' : '<span class="text-amber-700">📝 بلا وصف</span>') +
+                            ' · ' + (safeImg(x.poster) ? '🖼 صورة' : '<span class="text-amber-700">🖼 بلا صورة</span>') +
+                            ' · ' + (x.startsAt
                             ? ('⏰ ' + esc(fmtDateTime(x.startsAt)) + ' · يصلك التنبيه ' + remindLabel(x.reminderMin || 60))
                             : '<span class="text-amber-700 font-bold">⚠ لم تُحدَّد اليوم والساعة — لا عدّاد ولا تذكير</span>') + '</div>' +
                     '</div>' +
@@ -1796,6 +1917,20 @@
         else if (a === 'claim-admin') claimSuperAdmin();
         else if (a === 'signout') standaloneSignOut();
     });
+
+    /* تكبير الصورة: ضغط مطوّل = تكبير، إفلات = رجوع (فأرة أو لمس) */
+    document.addEventListener('pointerdown', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('[data-zoom]') : null;
+        if (!el) return;
+        var src = el.getAttribute('data-zoom') || (el.tagName === 'IMG' ? el.getAttribute('src') : '');
+        if (!src) return;
+        if (e.cancelable) e.preventDefault();
+        showZoom(src);
+    }, { passive: false });
+    ['pointerup', 'pointercancel', 'mouseup', 'touchend', 'touchcancel'].forEach(function (ev) {
+        document.addEventListener(ev, hideZoom);
+    });
+    window.addEventListener('blur', hideZoom);
 
     /* ---------- ربط صفحة الحساب ---------- */
     function standaloneSignOut() {
