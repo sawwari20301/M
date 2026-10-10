@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="لوحة تحكم المشرف العام لنادي مَتن: إدارة صالونات القراءة والقراء والشركاء ونقاط الولاء.">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23234e3d'/%3E%3Ctext x='32' y='45' font-size='36' text-anchor='middle' fill='%23dfbe7e' font-family='serif'%3E%D9%85%3C/text%3E%3C/svg%3E">
     <style>
@@ -13,8 +13,9 @@
     <title>لوحة تحكم المشرف العام | نادي مَتن</title>
     <link rel="stylesheet" href="fonts.css">
     <link rel="stylesheet" href="styles.css">
+    <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
-<body class="min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
+<body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
 
     <div class="bg-matn-emeraldDark text-matn-goldLight px-4 py-2 text-xs md:text-sm border-b border-matn-emerald/40">
         <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center">
@@ -24,7 +25,7 @@
         </div>
     </div>
 
-    <header class="sticky top-0 z-50 bg-matn-cream/95 backdrop-blur-md border-b border-matn-sand/60">
+    <header class="matn-safe-top sticky top-0 z-50 bg-matn-cream/95 backdrop-blur-md border-b border-matn-sand/60">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between gap-4">
             <a href="index.html" class="flex items-center gap-3 shrink-0">
                 <span class="w-12 h-12 rounded-full border-2 border-matn-gold flex items-center justify-center bg-white shadow-sm">
@@ -203,7 +204,7 @@
         </div>
     </main>
 
-    <footer class="mt-auto bg-matn-emeraldDark text-white border-t border-matn-emerald">
+    <footer class="matn-safe-bottom mt-auto bg-matn-emeraldDark text-white border-t border-matn-emerald">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3 text-xs">
             <div class="space-y-2">
                 <div class="font-amiri text-xl text-matn-goldLight">نادي مَتن</div>
