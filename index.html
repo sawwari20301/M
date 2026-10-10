@@ -11,8 +11,8 @@
         a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
     </style>
     <title>نادي مَتن للقراءة والحوار | البوابة الرئيسية</title>
-    <link rel="stylesheet" href="fonts.css?v=39">
-    <link rel="stylesheet" href="styles.css?v=39">
+    <link rel="stylesheet" href="fonts.css?v=40">
+    <link rel="stylesheet" href="styles.css?v=40">
     <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
 <body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
@@ -141,7 +141,7 @@
             </div>
         </section>
 
-        <section class="pt-10 pb-8 border-b border-matn-sand/40">
+        <section id="diarySection" class="hidden pt-10 pb-8 border-b border-matn-sand/40">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div id="diaryStrip" class="hidden"></div>
             </div>
@@ -154,37 +154,54 @@
         </section>
 
         <section class="py-12 md:py-16 bg-white border-y border-matn-sand/60">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center mb-8">
-                    <div class="text-[11px] font-bold tracking-widest text-matn-gold">اخترنا لكم هذا الأسبوع</div>
-                    <h2 class="font-amiri text-3xl font-bold text-matn-emerald mt-2">كتاب الأسبوع ونقاش الأعضاء</h2>
-                    <p class="text-xs text-matn-muted mt-2">اقرأ معنا، وشارك رأيك في الكتاب وفي جلسة الصالون، وصوّت لاختيار الأسبوع القادم.</p>
-                </div>
-                <div class="grid gap-6 lg:grid-cols-2">
-                    <div class="bg-matn-cream rounded-3xl border border-matn-sand shadow-sm p-6 space-y-5">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+
+                <!-- 📚 كتاب الأسبوع + بياناته (النقاش يظهر بالضغط عليه) -->
+                <div class="bg-matn-cream rounded-3xl border border-matn-sand shadow-sm p-5 sm:p-6 space-y-5">
+                    <div class="flex flex-wrap items-end justify-between gap-3">
                         <div>
                             <div class="text-[11px] font-bold tracking-widest text-matn-gold">اخترنا لكم هذا الأسبوع</div>
-                            <h3 class="font-amiri text-2xl font-bold text-matn-emerald mt-1">📚 كتاب الأسبوع</h3>
+                            <h2 class="font-amiri text-2xl sm:text-3xl font-bold text-matn-emerald mt-1">📚 كتاب الأسبوع</h2>
                         </div>
-                        <div id="bookBox" class="hidden"></div>
-                        <div id="pollBox" class="hidden bg-white rounded-2xl border border-matn-sand p-4"></div>
+                        <button type="button" id="bookTalkBtn" data-action="toggle-book-talk" class="bg-white border border-matn-sand hover:border-matn-gold px-4 py-2.5 rounded-xl text-xs font-bold text-matn-emerald shadow-sm transition">💬 آراء الأعضاء والحوار</button>
                     </div>
-                    <div class="bg-matn-cream rounded-3xl border border-matn-sand shadow-sm p-6 space-y-4">
-                        <h3 class="font-amiri text-2xl font-bold text-matn-emerald">💬 الحوار وآراء الأعضاء</h3>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" data-action="post-tab" data-topic="book">كتاب الأسبوع</button>
-                            <button type="button" data-action="post-tab" data-topic="session">جلسة الصالون</button>
+
+                    <div id="bookBox" class="hidden"></div>
+                    <p id="bookEmpty" class="hidden text-xs text-matn-muted bg-white rounded-2xl border border-dashed border-matn-sand px-4 py-3">لم يُختر كتاب الأسبوع بعد — يضيفه المشرف من لوحة الإدارة.</p>
+
+                    <!-- النقاش والتصويت: مخفي حتى تضغط كتاب الأسبوع -->
+                    <div id="bookTalk" class="hidden space-y-4 pt-2 border-t border-matn-sand/60">
+                        <div id="pollBox" class="hidden bg-white rounded-2xl border border-matn-sand p-4"></div>
+                        <div class="bg-white rounded-2xl border border-matn-sand p-4 space-y-4">
+                            <h3 class="font-amiri text-xl font-bold text-matn-emerald">💬 الحوار وآراء الأعضاء</h3>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" data-action="post-tab" data-topic="book">كتاب الأسبوع</button>
+                                <button type="button" data-action="post-tab" data-topic="session">جلسة الصالون</button>
+                            </div>
+                            <div id="postHint" class="text-[11px] text-matn-muted"></div>
+                            <div class="space-y-2">
+                                <textarea id="postText" rows="3" class="matn-input" placeholder="اكتب رأيك أو سؤالك للنقاش…"></textarea>
+                                <button type="button" data-action="add-post" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">انشر مشاركتي</button>
+                            </div>
+                            <ul id="postsList" class="text-xs space-y-2"></ul>
                         </div>
-                        <div id="postHint" class="text-[11px] text-matn-muted"></div>
-                        <div class="space-y-2">
-                            <textarea id="postText" rows="3" class="matn-input" placeholder="اكتب رأيك أو سؤالك للنقاش…"></textarea>
-                            <button type="button" data-action="add-post" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">انشر مشاركتي</button>
-                        </div>
-                        <ul id="postsList" class="text-xs space-y-2"></ul>
                     </div>
                 </div>
+
+                <!-- 🤝 شركاؤنا -->
+                <div id="homePartnersCard" class="hidden bg-matn-cream rounded-3xl border border-matn-sand shadow-sm p-5 sm:p-6 space-y-4">
+                    <div>
+                        <div class="text-[11px] font-bold tracking-widest text-matn-gold">مزايا أعضاء النادي</div>
+                        <h2 class="font-amiri text-2xl sm:text-3xl font-bold text-matn-emerald mt-1">🤝 شركاؤنا</h2>
+                        <p class="text-[11px] text-matn-muted mt-1">اضغط على أي شريك ليُفتح موقعه على الخريطة.</p>
+                    </div>
+                    <div id="homePartners" class="space-y-2"></div>
+                    <a href="partners.html" class="inline-block text-[11px] font-bold text-matn-emerald hover:underline">دليل الشركاء ومزايا الاستبدال ›</a>
+                </div>
+
             </div>
         </section>
+
     </main>
 
     <footer class="matn-safe-bottom mt-auto bg-matn-emeraldDark text-white border-t border-matn-emerald">
@@ -210,12 +227,12 @@
                 <a href="admin.html" class="block py-1.5 text-white/70 hover:text-white transition">بوابة الإشراف</a>
             </div>
         </div>
-        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 39</span></div>
+        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 40</span></div>
     </footer>
 
-    <script src="cloud-config.js?v=39" defer></script>
-    <script src="cloud.js?v=39" defer></script>
-    <script src="app.js?v=39" defer></script>
+    <script src="cloud-config.js?v=40" defer></script>
+    <script src="cloud.js?v=40" defer></script>
+    <script src="app.js?v=40" defer></script>
     <script>
         (function () {
             var btn = document.getElementById('menuBtn');

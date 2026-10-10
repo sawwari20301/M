@@ -285,9 +285,15 @@
     ];
 
     var SEED_PARTNERS = [
-        { id: 'p-lavender', name: 'مشغل لافندر للعناية النسائية', tag: 0, desc: 'قسيمة خصم 100 ريال لكافة الخدمات التجميلية والمساج الأروماتك.', cost: 120, prefix: 'LAV' },
-        { id: 'p-vita', name: 'نادي فيتا للياقة النسائية', tag: 1, desc: 'اشتراك أسبوعي تجريبي كامل شامل الصالة وحصص البيلاتس واليوغا.', cost: 150, prefix: 'VITA' },
-        { id: 'p-sofia', name: 'مقهى ومكتبة صوفيا', tag: 2, desc: 'مشروب قهوة مختصة مجاني مع حجز ركن قراءة هادئ لمدة ساعتين.', cost: 50, prefix: 'SOF' }
+        { id: 'p-lavender', name: 'مشغل لافندر للعناية النسائية', tag: 0, desc: 'قسيمة خصم 100 ريال لكافة الخدمات التجميلية والمساج الأروماتك.', cost: 120, prefix: 'LAV',
+          city: 'الرياض', place: 'حي الياسمين', street: 'طريق أنس بن مالك', mall: 'لافندر بارك — الدور الثاني',
+          link: 'https://www.google.com/maps/search/?api=1&query=24.816944,46.636111' },
+        { id: 'p-vita', name: 'نادي فيتا للياقة النسائية', tag: 1, desc: 'اشتراك أسبوعي تجريبي كامل شامل الصالة وحصص البيلاتس واليوغا.', cost: 150, prefix: 'VITA',
+          city: 'الرياض', place: 'حي الملقا', street: 'طريق الملك سلمان', mall: 'فيتا مول — الدور الأرضي',
+          link: 'https://www.google.com/maps/search/?api=1&query=24.774,46.6' },
+        { id: 'p-sofia', name: 'مقهى ومكتبة صوفيا', tag: 2, desc: 'مشروب قهوة مختصة مجاني مع حجز ركن قراءة هادئ لمدة ساعتين.', cost: 50, prefix: 'SOF',
+          city: 'الرياض', place: 'حي حطين', street: 'طريق الأمير تركي', mall: 'الرياض بارك — بوابة ٤',
+          link: 'https://www.google.com/maps/search/?api=1&query=24.83,46.62' }
     ];
 
     var SEED_CODES = {
@@ -1689,18 +1695,32 @@
     }
 
     /* لوحة الإشراف — إضافة شريك */
-    function openAddPartner() {
+    function openAddPartner(editId) {
         if (!needPerm('partners', 'إدارة الشركاء')) return;
-        var opts = CATEGORIES.map(function (c, i) { return '<option value="' + i + '">' + esc(c.label) + '</option>'; }).join('');
+        var cur = null;
+        if (editId) {
+            var dd = fullDoc();
+            cur = (dd.partners || []).filter(function (x) { return x.id === editId; })[0] || null;
+            if (!cur) return;
+        }
+        var opts = CATEGORIES.map(function (c, i) { return '<option value="' + i + '"' + (cur && cur.tag === i ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('');
+        var V = function (k) { return cur && cur[k] != null ? esc(String(cur[k])) : ''; };
         modal({
-            title: 'إضافة شريك',
+            title: cur ? ('تعديل: ' + cur.name) : 'إضافة شريك',
             body:
-                '<label class="matn-field"><span>اسم الشريك</span><input class="matn-input" id="pName" type="text" placeholder="مثال: مكتبة المدى"></label>' +
+                '<label class="matn-field"><span>اسم الشريك</span><input class="matn-input" id="pName" type="text" placeholder="مثال: مكتبة المدى" value="' + V('name') + '"></label>' +
                 '<label class="matn-field"><span>التصنيف</span><select class="matn-input" id="pCat">' + opts + '</select></label>' +
-                '<label class="matn-field"><span>وصف العرض</span><input class="matn-input" id="pDesc" type="text" placeholder="قسيمة خصم 50 ريالاً..."></label>' +
-                '<label class="matn-field"><span>تكلفة الاستبدال (نقاط)</span><input class="matn-input" id="pCost" type="number" min="1" step="1" value="100"></label>' +
+                '<label class="matn-field"><span>وصف العرض</span><input class="matn-input" id="pDesc" type="text" placeholder="قسيمة خصم 50 ريالاً..." value="' + V('desc') + '"></label>' +
+                '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                    '<label class="matn-field"><span>المدينة / الحي</span><input class="matn-input" id="pCity" type="text" placeholder="الرياض — حي الياسمين" value="' + V('city') + '"></label>' +
+                    '<label class="matn-field"><span>المقر (الفرع)</span><input class="matn-input" id="pPlace" type="text" placeholder="مشغل لافندر فرع الياسمين" value="' + V('place') + '"></label>' +
+                    '<label class="matn-field"><span>الشارع</span><input class="matn-input" id="pStreet" type="text" placeholder="طريق أنس بن مالك" value="' + V('street') + '"></label>' +
+                    '<label class="matn-field"><span>المول / المبنى</span><input class="matn-input" id="pMall" type="text" placeholder="لافندر بارك — الدور الثاني" value="' + V('mall') + '"></label>' +
+                '</div>' +
+                '<label class="matn-field"><span>رابط الموقع على الخريطة</span><input class="matn-input" id="pLink" type="url" dir="ltr" placeholder="https://maps.google.com/..." value="' + V('link') + '"></label>' +
+                '<label class="matn-field"><span>تكلفة الاستبدال (نقاط)</span><input class="matn-input" id="pCost" type="number" min="1" step="1" value="' + (cur && cur.cost ? cur.cost : 100) + '"></label>' +
                 '<p id="pMsg" class="text-xs mt-1"></p>',
-            footer: '<button type="button" id="pGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إضافة الشريك</button>' + okBtn('إلغاء'),
+            footer: '<button type="button" id="pGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">' + (cur ? 'حفظ التعديل' : 'إضافة الشريك') + '</button>' + okBtn('إلغاء'),
             ready: function (w) {
                 w.querySelector('#pName').focus();
                 w.querySelector('#pGo').addEventListener('click', function () {
@@ -1713,15 +1733,31 @@
                     if (!(cost > 0)) { msg.textContent = 'أدخل تكلفة صحيحة بالنقاط.'; msg.className = 'text-xs mt-1 text-red-700'; return; }
                     var prefix = (name.replace(/[^A-Za-z\u0600-\u06FF]/g, '').slice(0, 3) || 'MAT').toUpperCase();
                     if (/[\u0600-\u06FF]/.test(prefix)) prefix = 'SHK';
+                    var extra = {
+                        city: w.querySelector('#pCity').value.trim(),
+                        place: w.querySelector('#pPlace').value.trim(),
+                        street: w.querySelector('#pStreet').value.trim(),
+                        mall: w.querySelector('#pMall').value.trim(),
+                        link: safeUrl(w.querySelector('#pLink').value.trim()) || ''
+                    };
+                    if (cur) {
+                        change(function (st) {
+                            var p = (st.partners || []).filter(function (x) { return x.id === editId; })[0];
+                            if (p) Object.assign(p, { name: name, tag: cat, desc: desc || p.desc, cost: cost }, extra);
+                        });
+                        closeModal();
+                        toast('حُفظت بيانات «' + name + '»', 'ok');
+                        return;
+                    }
                     if (CLOUD) {
-                        window.MatnCloud.addPartner({ name: name, tag: cat, desc: desc || 'عرض خاص لأعضاء نادي مَتن.', cost: cost, prefix: prefix })
+                        window.MatnCloud.addPartner(Object.assign({ name: name, tag: cat, desc: desc || 'عرض خاص لأعضاء نادي مَتن.', cost: cost, prefix: prefix }, extra))
                             .then(function () { return refresh(); })
                             .then(function () { closeModal(); toast('أُضيف «' + name + '» إلى دليل الشركاء', 'ok'); })
                             .catch(function (e) { msg.textContent = cloudAr(e); msg.className = 'text-xs mt-1 text-red-700'; });
                         return;
                     }
                     change(function (st) {
-                        st.partners.push({ id: 'p-' + rnd(6).toLowerCase(), name: name, tag: cat, desc: desc || 'عرض خاص لأعضاء نادي مَتن.', cost: cost, prefix: prefix });
+                        st.partners.push(Object.assign({ id: 'p-' + rnd(6).toLowerCase(), name: name, tag: cat, desc: desc || 'عرض خاص لأعضاء نادي مَتن.', cost: cost, prefix: prefix }, extra));
                     });
                     closeModal();
                     toast('أُضيف «' + name + '» إلى دليل الشركاء', 'ok');
@@ -1970,6 +2006,8 @@
                     '<span class="self-start text-[11px] font-bold px-2 py-0.5 rounded ' + catCls(p.tag) + '">' + esc(catLabel(p.tag)) + '</span>' +
                     '<h2 class="font-bold text-base text-matn-charcoal">' + esc(p.name) + '</h2>' +
                     '<p class="text-xs text-matn-muted flex-1">' + esc(p.desc) + '</p>' +
+                    (partnerLocLine(p) ? '<div class="text-[11px] space-y-0.5 bg-matn-cream rounded-xl p-2 border border-matn-sand">' + partnerLocLine(p) +
+                        (safeUrl(p.link) ? '<a href="' + esc(safeUrl(p.link)) + '" target="_blank" rel="noopener" class="inline-block mt-1 font-bold text-matn-emerald">🗺 افتح الموقع ↗</a>' : '') + '</div>' : '') +
                     '<div class="pt-2 flex justify-between items-center text-xs gap-2">' +
                         '<span class="font-bold text-matn-gold">' + num(p.cost) + ' نقطة</span>' +
                         '<button type="button" data-redeem="' + esc(p.id) + '" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-lg font-bold transition' + (can ? '' : ' opacity-60') + '">' + (can ? 'استبدال فوراً' : 'الرصيد لا يكفي') + '</button>' +
@@ -2277,12 +2315,18 @@
         if (ap) {
             ap.innerHTML = s.partners.map(function (p) {
                 return '<li class="flex flex-wrap justify-between items-center gap-2 py-2 border-b border-matn-sand/60 text-xs">' +
-                    '<span>' + esc(p.name) + ' <span class="text-matn-muted">(' + num(p.cost) + ' نقطة)</span></span>' +
-                    '<button type="button" data-delpartner="' + esc(p.id) + '" class="text-red-700 font-bold hover:underline">حذف</button>' +
+                    '<span class="min-w-0">' + esc(p.name) + ' <span class="text-matn-muted">(' + num(p.cost) + ' نقطة)</span>' +
+                        (partnerLocLine(p) ? '<span class="block text-[10px] text-matn-muted mt-0.5">' + esc([p.place, p.city, p.street, p.mall].filter(Boolean).join(' · ')) + (safeUrl(p.link) ? ' · 🗺' : '') + '</span>' : '') + '</span>' +
+                    '<span class="flex items-center gap-3">' +
+                        '<button type="button" data-editpartner="' + esc(p.id) + '" class="text-matn-emerald font-bold hover:underline">✏️ تعديل / الموقع</button>' +
+                        '<button type="button" data-delpartner="' + esc(p.id) + '" class="text-red-700 font-bold hover:underline">حذف</button></span>' +
                     '</li>';
             }).join('');
             ap.querySelectorAll('[data-delpartner]').forEach(function (b) {
                 b.addEventListener('click', function () { removePartner(b.getAttribute('data-delpartner')); });
+            });
+            ap.querySelectorAll('[data-editpartner]').forEach(function (b) {
+                b.addEventListener('click', function () { openAddPartner(b.getAttribute('data-editpartner')); });
             });
         }
         var ac = document.getElementById('adminCodeList');
@@ -2321,6 +2365,7 @@
         renderDiaryStrip(s);
         renderDiaryMenu(s);
         renderArchive(s);
+        renderHomePartners(s);
         renderMyDiary(s);
         renderDiaryWall(s);
         renderBell(s);
@@ -2394,6 +2439,7 @@
                     (b.author ? '<div class="text-xs text-matn-gold mt-1">✍ ' + esc(b.author) + '</div>' : '') +
                     (b.desc ? '<p class="text-xs text-matn-muted leading-relaxed mt-2 whitespace-pre-line">' + esc(b.desc) + '</p>' : '') +
                     (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-3 text-xs font-bold text-matn-emerald border border-matn-sand rounded-xl px-4 py-2 hover:border-matn-gold transition">تفاصيل الكتاب ↗</a>' : '') +
+                    '<button type="button" data-action="toggle-book-talk" class="block w-full text-right mt-3 bg-white border border-dashed border-matn-sand hover:border-matn-gold rounded-xl px-4 py-2.5 text-[11px] font-bold text-matn-emerald transition">💬 اضغط لعرض آراء الأعضاء والحوار والنقاش والتصويت ›</button>' +
                 '</div></div>';
     }
 
@@ -2867,7 +2913,9 @@
         if (!box) return;
         var d = fullDoc();
         var list = publicDiaries(d);
-        if (!list.length) { box.classList.add('hidden'); return; }
+        var sec = box.closest('section');
+        if (sec) sec.classList.toggle('hidden', !list.length);
+        if (!list.length) { box.innerHTML = ''; return; }
         box.classList.remove('hidden');
         var head =
             '<div class="flex flex-wrap items-end justify-between gap-3 mb-4">' +
@@ -2882,6 +2930,56 @@
             (list.length > 5 ? '<p class="text-center mt-4"><a href="account.html#diary" class="text-[11px] font-bold text-matn-emerald hover:underline">عرض كل المذكرات (' + num(list.length) + ') ›</a></p>' : '');
         bindDiaryRows(box);
     }
+    /* 🤝 شركاؤنا في الرئيسية: الاسم + المقر + الشارع + المول + رابط الخريطة */
+    function partnerLocLine(p) {
+        var bits = [];
+        if (p.place) bits.push(esc(p.place));
+        if (p.city) bits.push(esc(p.city));
+        var head = bits.join(' — ');
+        var out = '';
+        if (head) out += '<span class="block text-[11px] text-matn-charcoal">📍 المقر: ' + head + '</span>';
+        if (p.street) out += '<span class="block text-[11px] text-matn-muted">🛣 الشارع: ' + esc(p.street) + '</span>';
+        if (p.mall) out += '<span class="block text-[11px] text-matn-muted">🏬 المول/المبنى: ' + esc(p.mall) + '</span>';
+        return out;
+    }
+    function renderHomePartners(s) {
+        var card = document.getElementById('homePartnersCard');
+        var box = document.getElementById('homePartners');
+        if (!card || !box) return;
+        var list = s.partners || [];
+        card.classList.toggle('hidden', !list.length);
+        if (!list.length) return;
+        box.innerHTML = list.map(function (p) {
+            var lk = safeUrl(p.link);
+            var inner =
+                '<span class="shrink-0 w-9 h-9 rounded-full bg-white border border-matn-sand flex items-center justify-center text-base">' + (p.tag === 1 ? '🏋️' : p.tag === 2 ? '☕' : p.tag === 3 ? '📚' : '✨') + '</span>' +
+                '<span class="min-w-0 flex-1">' +
+                    '<span class="flex flex-wrap items-center gap-2">' +
+                        '<strong class="text-xs text-matn-emerald">' + esc(p.name) + '</strong>' +
+                        '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded ' + catCls(p.tag) + '">' + esc(catLabel(p.tag)) + '</span>' +
+                        '<span class="text-[10px] text-matn-gold font-bold">' + num(p.cost) + ' نقطة</span>' +
+                    '</span>' +
+                    partnerLocLine(p) +
+                    (p.desc ? '<span class="block text-[10px] text-matn-muted mt-0.5">' + esc(clip(p.desc, 90)) + '</span>' : '') +
+                '</span>' +
+                (lk ? '<span class="shrink-0 text-[11px] font-bold text-matn-emerald whitespace-nowrap">🗺 الموقع ›</span>'
+                    : '<span class="shrink-0 text-[10px] text-matn-muted whitespace-nowrap">بلا موقع</span>');
+            return lk
+                ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="w-full flex items-start gap-3 bg-white border border-matn-sand hover:border-matn-gold rounded-2xl px-3 py-3 transition shadow-sm">' + inner + '</a>'
+                : '<div class="w-full flex items-start gap-3 bg-white border border-matn-sand rounded-2xl px-3 py-3 shadow-sm">' + inner + '</div>';
+        }).join('');
+    }
+    /* فتح/إغلاق نقاش كتاب الأسبوع */
+    function toggleBookTalk(force) {
+        var box = document.getElementById('bookTalk');
+        if (!box) return;
+        var on = (typeof force === 'boolean') ? force : box.classList.contains('hidden');
+        box.classList.toggle('hidden', !on);
+        var btn = document.getElementById('bookTalkBtn');
+        if (btn) btn.textContent = on ? '▲ إخفاء الآراء والنقاش' : '💬 آراء الأعضاء والحوار';
+        if (on) window.setTimeout(function () { try { box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 120);
+    }
+
     /* القائمة المنسدلة للمذكرات في الترويسة */
     function renderDiaryMenu(s) {
         var boxes = document.querySelectorAll('[data-diary-menu]');
@@ -3823,6 +3921,7 @@
         else if (a === 'support-reply') newMessageForm(true);
         else if (a === 'seed-demo') seedDemo();
         else if (a === 'purge-demo') purgeDemo();
+        else if (a === 'toggle-book-talk') toggleBookTalk();
         else if (a === 'bell') openBell();
         else if (a === 'bell-read') markAllNoticesRead();
         else if (a === 'toggle-branches') {
