@@ -717,7 +717,10 @@
         } catch (e) {}
         return seedDoc();
     }
-    function saveDoc(d) { try { store.set(KEY, JSON.stringify(d)); } catch (e) {} }
+    function saveDoc(d) {
+        try { store.set(KEY, JSON.stringify(d)); } catch (e) {}
+        try { if (window.MATN_SYNC && window.MATN_SYNC.active()) window.MATN_SYNC.push(d); } catch (e) {}
+    }
 
     /* الصالون المعروض: **الأقرب موعداً** تلقائياً، ثم الذي يليه بعده */
     function featuredSalon(d) {
@@ -935,6 +938,10 @@
         NO_ACCOUNT: 'لا يوجد حساب بهذا الاسم. أنشئ حساباً جديداً.',
         WRONG_PASSWORD: 'كلمة المرور غير صحيحة.',
         SUSPENDED: 'هذا الحساب موقوف من إدارة النادي — تواصل مع المشرف العام.',
+        CLOUD_FAIL: 'تعذّر إكمال العملية في السحابة — حاول مرة أخرى.',
+        NETWORK: 'تعذّر الوصول إلى السحابة — تحقق من اتصالك بالإنترنت.',
+        NOT_CONFIGURED: 'المزامنة السحابية غير مفعّلة.',
+        CONFIRM_EMAIL: 'Supabase يطلب تأكيد البريد — أوقف «Confirm email» من إعدادات المشروع (راجع دليل الإعداد).',
         NEED_LOGIN: 'سجّل الدخول أولاً للمتابعة.',
         EMAIL_TAKEN: 'اسم المستخدم محجوز — اختر غيره.'
     };
@@ -968,6 +975,12 @@
         var uname = normalizeUser(username);
         if (!uname) return Promise.reject({ code: 'BAD_USERNAME' });
         if (!pass || String(pass).length < 6) return Promise.reject({ code: 'WEAK_PASSWORD' });
+        if (window.MATN_SYNC && window.MATN_SYNC.configured()) {
+            /* الوضع السحابي: الحساب يُنشأ على الخادم (مصادقة حقيقية) */
+            return window.MATN_SYNC.signUp(uname, pass, name).then(function () {
+                return { username: uname, name: String(name || '').trim() || uname };
+            });
+        }
         var d = doc();
         if (d.accounts[uname]) return Promise.reject({ code: 'USERNAME_TAKEN' });
         return sha256(String(pass)).then(function (hash) {
@@ -993,6 +1006,17 @@
 
     function signIn(username, pass) {
         var uname = normalizeUser(username);
+        if (window.MATN_SYNC && window.MATN_SYNC.configured()) {
+            /* الوضع السحابي: التحقق على الخادم ثم سحب بياناتي إلى هذا الجهاز */
+            return window.MATN_SYNC.signIn(uname, pass).then(function (r) {
+                state = null; load(); render();
+                return r;
+            }, function (err) {
+                if (err && err.code === 'NO_ACCOUNT') throw { code: 'NO_ACCOUNT' };
+                if (err && (err.code === 'NETWORK' || err.code === 'CLOUD_FAIL')) throw { code: 'WRONG_PASSWORD' };
+                throw err;
+            });
+        }
         var d = doc();
         var acc = d.accounts[uname];
         if (!acc) return Promise.reject({ code: 'NO_ACCOUNT' });
@@ -1007,6 +1031,7 @@
     }
 
     function signOut() {
+        try { if (window.MATN_SYNC && window.MATN_SYNC.active()) window.MATN_SYNC.signOut(); } catch (e) {}
         var d = doc();
         d.authUser = null;
         saveDoc(d);
@@ -2811,6 +2836,8 @@
         renderBadWords(s);
         renderHeaderAdAdmin(s);
         renderPointsSettings(s);
+        renderDataTools(s);
+        renderSyncBox(s);
         checkThanksCard(s);
         renderLive(s);
         renderLiveAdmin(s);
@@ -3436,6 +3463,111 @@
         if (n >= 3 && n <= 10) return 'مذكرات';
         return 'مذكرة';
     }
+    /* ============ 💾 نسخ بيانات الموقع واستعادتها (نقل بين الأجهزة) ============ */
+    function siteDataSummary(d) {
+        d = d || fullDoc();
+        return {
+            accounts: Object.keys(d.accounts || {}).length,
+            salons: (d.salons || []).length,
+            branches: (d.branches || []).length,
+            diaries: Object.keys(d.accounts || {}).reduce(function (n, u) { return n + ((d.accounts[u].diary || []).length); }, 0),
+            posts: (d.posts || []).length,
+            polls: (d.polls || []).length,
+            partners: (d.partners || []).length,
+            ads: (adItemsOf(d.headerAd) || []).length,
+            messages: (d.messages || []).length,
+            orders: (d.orders || []).length
+        };
+    }
+    function exportSiteData() {
+        var d = fullDoc();
+        var payload = { app: 'matn-club', version: 1, exportedAt: new Date().toISOString(), data: d };
+        try {
+            var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            var a = document.createElement('a');
+            var dt = new Date();
+            var stamp = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'matn-data-' + stamp + '.json';
+            document.body.appendChild(a); a.click();
+            setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+            toast('نُزّلت نسخة من بيانات الموقع — احفظها للاستيراد في جهاز آخر', 'ok');
+        } catch (e) { toast('تعذّر إنشاء ملف النسخة.', 'error'); }
+    }
+    function importSiteData(file) {
+        var cur = load();
+        if (!(cur.signedIn && cur.user.super)) { toast('الاستيراد للمشرف العام فقط.', 'error'); return; }
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+            var obj = null;
+            try { obj = JSON.parse(String(reader.result || '')); } catch (e) { obj = null; }
+            var d = obj && (obj.data || (obj.accounts ? obj : null));
+            if (!d || typeof d !== 'object' || !d.accounts) { toast('ملف غير صالح — اختر ملف نسخة صادراً من لوحة مَتن.', 'error'); return; }
+            var s1 = siteDataSummary(d);
+            confirmBox('استعادة نسخة البيانات',
+                'سيُستبدل محتوى هذا الجهاز بالنسخة المرفوعة: ' + num(s1.accounts) + ' حساب · ' + num(s1.salons) + ' صالون · ' +
+                num(s1.diaries) + ' مذكرة · ' + num(s1.posts) + ' مشاركة · ' + num(s1.partners) + ' شريك · ' + num(s1.ads) + ' إعلان ترويسة. ' +
+                'لا يمكن التراجع.', function () {
+                saveDoc(d); state = null; load(); render();
+                toast('تمت استعادة البيانات ✓', 'ok');
+            }, 'استعادة');
+        };
+        reader.readAsText(file);
+    }
+    /* ============ ☁️ صندوق المزامنة السحابية ============ */
+    function renderSyncBox(s) {
+        var box = document.getElementById('syncBox');
+        if (!box) return;
+        var on = !!(window.MATN_SYNC && window.MATN_SYNC.configured());
+        var st = (on && window.MATN_SYNC.status) ? window.MATN_SYNC.status() : { state: 'off' };
+        var info = {
+            off: ['غير مفعّلة — الموقع يعمل محلياً على هذا الجهاز', 'text-matn-muted', 'bg-matn-cream border-matn-sand'],
+            syncing: ['جارٍ المزامنة…', 'text-amber-700', 'bg-amber-50 border-amber-200'],
+            ok: ['متزامن مع السحابة ✓', 'text-emerald-700', 'bg-emerald-50 border-emerald-200'],
+            error: ['آخر مزامنة لم تكتمل — سيُعاد المحاولة تلقائياً', 'text-red-700', 'bg-red-50 border-red-200']
+        }[st.state] || ['—', 'text-matn-muted', 'bg-matn-cream border-matn-sand'];
+        var when = st.at ? fmtDateTime(new Date(st.at).toISOString()) : '—';
+        box.innerHTML =
+            '<div class="rounded-xl border px-3 py-2.5 ' + info[2] + '">' +
+              '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                '<span class="text-xs font-bold ' + info[1] + '">' + esc(info[0]) + '</span>' +
+                (st.username ? '<span class="text-[11px] text-matn-muted">الحساب: ' + esc(st.username) + (st.admin ? ' · مشرف' : '') + '</span>' : '') +
+              '</div>' +
+              (on ? '<div class="text-[10px] text-matn-muted mt-1">آخر مزامنة: ' + esc(when) + (st.msg ? ' — ' + esc(st.msg) : '') + '</div>' : '') +
+            '</div>' +
+            (on
+              ? '<div class="flex flex-wrap gap-2 mt-2">' +
+                  '<button type="button" data-action="sync-now" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-3 py-2 rounded-xl text-[11px] font-bold transition">☁️ زامن الآن</button>' +
+                  '<button type="button" data-action="sync-push-all" class="bg-white border border-matn-sand hover:border-matn-gold text-matn-emerald px-3 py-2 rounded-xl text-[11px] font-bold transition">⬆ ارفع محتوى هذا الجهاز إلى السحابة</button>' +
+                '</div>'
+              : '<p class="text-[11px] text-matn-muted mt-2 leading-relaxed">لم تُضبط السحابة بعد. راجع <code class="matn-code">SUPABASE-SETUP-V2.md</code> لتفعيل المزامنة بين كل الأجهزة (مجاناً). حتى ذلك الحين: استخدم «نسخ بيانات الموقع» بالأسفل لنقل المحتوى.</p>');
+    }
+
+    function renderDataTools(s) {
+        var box = document.getElementById('dataSummary');
+        if (!box) return;
+        var d = fullDoc();
+        var sm = siteDataSummary(d);
+        var last = 0;
+        Object.keys(d.accounts || {}).forEach(function (u) {
+            (d.accounts[u].diary || []).forEach(function (e) { last = Math.max(last, new Date(e.at).getTime() || 0); });
+        });
+        var upd = (d.headerAd && d.headerAd.at) ? d.headerAd.at : '';
+        box.innerHTML = '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-center text-[11px]">' +
+            [['الأعضاء', sm.accounts], ['الصالونات', sm.salons], ['المذكرات', sm.diaries],
+             ['المشاركات', sm.posts], ['الإعلانات', sm.ads], ['الشركاء', sm.partners],
+             ['التصويتات', sm.polls], ['الطلبات', sm.orders], ['الرسائل', sm.messages], ['الفروع', sm.branches]]
+            .map(function (x) {
+                return '<div class="bg-matn-cream rounded-xl border border-matn-sand p-2"><div class="text-matn-muted">' + x[0] + '</div><div class="font-bold text-matn-emerald">' + num(x[1]) + '</div></div>';
+            }).join('') + '</div>' +
+            (upd ? '<p class="text-[10px] text-matn-muted mt-2">آخر تغيير على بيانات الموقع: ' + esc(fmtDate(upd)) + '</p>' : '') +
+            '<p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-3 leading-relaxed">' +
+            '⚠ بيانات الموقع محفوظة <strong>داخل متصفح هذا الجهاز فقط</strong>. لنقلها إلى جهاز آخر (جوال/آيباد/كمبيوتر): ' +
+            'اضغط <strong>«⬇ تنزيل نسخة»</strong> هنا، ثم افتح اللوحة في الجهاز الآخر واضغط <strong>«⬆ استيراد نسخة»</strong> واختر الملف.' +
+            '</p>';
+    }
+
     /* ============ 🎯 نظام نقاط الولاء (قابل للضبط من اللوحة) ============ */
     var PTS_DEFAULT = { signup: 20, diary: 10, comment: 5, hour: 5, subscribe: 15, rating: 2 };
     function pts(d) {
@@ -4945,7 +5077,22 @@
         else if (a === 'save-badwords') saveBadWords();
         else if (a === 'save-ad') saveHeaderAd();
         else if (a === 'save-points') savePointsSettings();
+        else if (a === 'sync-now') {
+            if (window.MATN_SYNC && window.MATN_SYNC.configured()) {
+                toast('جارٍ المزامنة…', 'info');
+                window.MATN_SYNC.pull().then(function () { renderSyncBox(load()); toast('تمت المزامنة ✓', 'ok'); });
+            }
+        }
+        else if (a === 'sync-push-all') {
+            if (window.MATN_SYNC && window.MATN_SYNC.configured()) {
+                toast('جارٍ رفع محتوى هذا الجهاز…', 'info');
+                window.MATN_SYNC.pushAll().then(function () { renderSyncBox(load()); toast('تم رفع المحتوى ✓', 'ok'); });
+            }
+        }
+        else if (a === 'export-data') exportSiteData();
+        else if (a === 'import-data') { var _fi = document.getElementById('importFile'); if (_fi) _fi.click(); }
         else if (a === 'save-live') saveLive();
+        else if (a === 'force-reload') { location.replace(location.pathname + '?b=' + Date.now() + location.hash); }
         else if (a === 'pts-add-row') {
             var pe = document.getElementById('ptsExtra');
             if (pe) {
@@ -5122,7 +5269,31 @@
         }
     }
 
-    function boot() { wireAccountPage(); wireDiaryForm(); wireArchive(); refresh(); startPresence(); }
+    function wireDataImport() {
+        var fi = document.getElementById('importFile');
+        if (!fi || fi.dataset.wired) return;
+        fi.dataset.wired = '1';
+        fi.addEventListener('change', function (ev) {
+            var f = ev.target.files && ev.target.files[0];
+            if (f) importSiteData(f);
+            ev.target.value = '';
+        });
+    }
+    function boot() {
+        wireAccountPage(); wireDiaryForm(); wireArchive(); wireDataImport();
+        if (window.MATN_SYNC && window.MATN_SYNC.configured()) {
+            window.MATN_APP = {
+                afterSync: function () { state = null; load(); render(); },
+                refresh: function () { state = null; load(); render(); },
+                toast: function (m, k) { toast(m, k); }
+            };
+            window.MATN_SYNC.start();
+            /* احتياط: إن تعذّر أول سحب لأي سبب، نرسم المحلي بعد 6 ثوانٍ */
+            setTimeout(function () { if (!state) { state = null; load(); render(); startPresence(); } }, 6000);
+        } else {
+            refresh(); startPresence();
+        }
+    }
 
     /* تحديث العدّ التنازلي حيّاً بلا إعادة رسم (كي لا يُفسد ما يكتبه المستخدم) */
     window.setInterval(function () {
