@@ -11,8 +11,8 @@
         a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
     </style>
     <title>محفظة الولاء ونقاط مَتن | نادي مَتن</title>
-    <link rel="stylesheet" href="fonts.css">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="fonts.css?v=37">
+    <link rel="stylesheet" href="styles.css?v=37">
     <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
 <body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
@@ -46,26 +46,26 @@
                 <a href="admin.html" class="py-2 hover:text-matn-emerald transition text-matn-muted">بوابة الإشراف</a>
             </nav>
 
-            <div class="flex items-center gap-3 shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
                 <div class="relative shrink-0">
                     <button type="button" id="bellBtn" data-action="bell" title="التنبيهات" aria-label="التنبيهات" class="hidden relative w-9 h-9 rounded-full bg-matn-creamDark border border-matn-sand text-sm shadow-sm hover:border-matn-gold transition">🔔<span id="bellCount" class="hidden absolute -top-1 -left-1 bg-red-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1"></span></button>
                     <div id="bellMenu" class="hidden absolute left-0 mt-2 w-[19rem] max-w-[calc(100vw-2rem)] bg-white border border-matn-sand rounded-2xl shadow-xl p-3 z-50 text-right"></div>
                 </div>
-                <a href="account.html" id="acctChip" title="حسابي" class="flex items-center gap-2 bg-matn-creamDark border border-matn-sand px-3.5 py-1.5 rounded-full text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
+                <a href="account.html" id="acctChip" title="حسابي" class="flex items-center gap-1.5 sm:gap-2 bg-matn-creamDark border border-matn-sand px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition whitespace-nowrap">
                     <span class="w-2.5 h-2.5 rounded-full bg-matn-gold shrink-0"></span>
                     <span data-matn-points>دخول</span>
                 </a>
                 <a href="booking.html" class="hidden sm:inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition">انضم لصالون</a>
                 <div class="relative">
-                    <button type="button" data-action="toggle-branches" aria-haspopup="true" class="flex items-center gap-1.5 bg-white border border-matn-sand px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
+                    <button type="button" data-action="toggle-branches" aria-haspopup="true" class="flex items-center gap-1 sm:gap-1.5 bg-white border border-matn-sand px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-matn-gold shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>
-                        فروعنا <span class="text-[10px] text-matn-muted">▾</span>
+                        <span class="hidden sm:inline">فروعنا</span> <span class="hidden sm:inline text-[10px] text-matn-muted">▾</span>
                     </button>
                     <div id="branchesMenu" class="hidden absolute top-full left-0 mt-2 w-72 max-w-[85vw] max-h-80 overflow-auto bg-white border border-matn-sand rounded-2xl shadow-xl p-2 space-y-1" data-branches-menu></div>
                 </div>
                 <div class="relative">
-                    <button type="button" data-action="toggle-diaries" aria-haspopup="true" class="flex items-center gap-1.5 bg-white border border-matn-sand px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
-                        <span class="text-base leading-none">📔</span> المذكرات <span class="text-[10px] text-matn-muted">▾</span>
+                    <button type="button" data-action="toggle-diaries" aria-haspopup="true" class="flex items-center gap-1 sm:gap-1.5 bg-white border border-matn-sand px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
+                        <span class="text-base leading-none">📔</span> <span class="hidden sm:inline">المذكرات</span> <span class="hidden sm:inline text-[10px] text-matn-muted">▾</span>
                     </button>
                     <div id="diaryMenu" class="hidden absolute top-full left-0 mt-2 w-72 max-w-[85vw] max-h-80 overflow-auto bg-white border border-matn-sand rounded-2xl shadow-xl p-2 space-y-1 text-right" data-diary-menu></div>
                 </div>
@@ -171,9 +171,9 @@
         <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة.</div>
     </footer>
 
-    <script src="cloud-config.js" defer></script>
-    <script src="cloud.js" defer></script>
-    <script src="app.js" defer></script>
+    <script src="cloud-config.js?v=37" defer></script>
+    <script src="cloud.js?v=37" defer></script>
+    <script src="app.js?v=37" defer></script>
     <script>
         (function () {
             var btn = document.getElementById('menuBtn');
