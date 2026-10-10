@@ -2366,6 +2366,7 @@
         renderDiaryMenu(s);
         renderArchive(s);
         renderHomePartners(s);
+        renderBookPage(s);
         renderMyDiary(s);
         renderDiaryWall(s);
         renderBell(s);
@@ -2439,7 +2440,7 @@
                     (b.author ? '<div class="text-xs text-matn-gold mt-1">✍ ' + esc(b.author) + '</div>' : '') +
                     (b.desc ? '<p class="text-xs text-matn-muted leading-relaxed mt-2 whitespace-pre-line">' + esc(b.desc) + '</p>' : '') +
                     (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-3 text-xs font-bold text-matn-emerald border border-matn-sand rounded-xl px-4 py-2 hover:border-matn-gold transition">تفاصيل الكتاب ↗</a>' : '') +
-                    '<button type="button" data-action="toggle-book-talk" class="block w-full text-right mt-3 bg-white border border-dashed border-matn-sand hover:border-matn-gold rounded-xl px-4 py-2.5 text-[11px] font-bold text-matn-emerald transition">💬 اضغط لعرض آراء الأعضاء والحوار والنقاش والتصويت ›</button>' +
+                    '<a href="book.html" class="block w-full text-right mt-3 bg-white border border-dashed border-matn-sand hover:border-matn-gold rounded-xl px-4 py-2.5 text-[11px] font-bold text-matn-emerald transition">💬 اضغط لعرض آراء الأعضاء والحوار والنقاش والتصويت ›</a>' +
                 '</div></div>';
     }
 
@@ -2469,6 +2470,77 @@
         });
         var hint = document.getElementById('postHint');
         if (hint) hint.textContent = postTopic === 'book' ? 'رأيك في كتاب الأسبوع' : 'رأيك في جلسة الصالون وموضوعها';
+    }
+
+    /* صفحة «كتاب الأسبوع»: قائمتا آراء (الكتاب / الصالون والحلقة) */
+    function postsHtml(s, topic) {
+        var items = (s.posts || []).filter(function (p) { return p.topic === topic; });
+        if (!items.length) return '<li class="text-xs text-matn-muted py-2">لا توجد مشاركات بعد — كن أول من يكتب رأيه.</li>';
+        return items.map(function (p) {
+            var canDel = (s.signedIn && p.user === s.user.username) || can('engage');
+            return '<li class="border border-matn-sand rounded-2xl p-3 bg-white">' +
+                '<div class="flex items-center justify-between gap-2 text-[11px]">' +
+                    '<button type="button" data-member="' + esc(p.user) + '" class="font-bold text-matn-emerald hover:underline">' + esc(p.name || p.user) + ' ›</button>' +
+                    '<span class="text-matn-muted">' + esc(fmtDate(p.at)) + '</span>' +
+                '</div>' +
+                '<p class="text-xs leading-relaxed mt-1.5 whitespace-pre-line">' + esc(p.text) + '</p>' +
+                (canDel ? '<button type="button" data-delpost="' + esc(p.id) + '" class="text-[11px] text-red-700 font-bold mt-1.5 hover:underline">حذف</button>' : '') +
+            '</li>';
+        }).join('');
+    }
+    function wirePostsBox(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-delpost]').forEach(function (b) {
+            b.addEventListener('click', function () { deletePost(b.getAttribute('data-delpost')); });
+        });
+        root.querySelectorAll('[data-member]').forEach(function (b) {
+            b.addEventListener('click', function () { openMember(b.getAttribute('data-member')); });
+        });
+    }
+    function renderBookPage(s) {
+        var b1 = document.getElementById('postsBook');
+        var b2 = document.getElementById('postsSession');
+        if (!b1 && !b2) return;
+        if (b1) { b1.innerHTML = postsHtml(s, 'book'); wirePostsBox(b1); }
+        if (b2) { b2.innerHTML = postsHtml(s, 'session'); wirePostsBox(b2); }
+        var n1 = document.getElementById('cBook');
+        var n2 = document.getElementById('cSession');
+        if (n1) n1.textContent = num((s.posts || []).filter(function (p) { return p.topic === 'book'; }).length);
+        if (n2) n2.textContent = num((s.posts || []).filter(function (p) { return p.topic === 'session'; }).length);
+    }
+    /* إظهار/إخفاء لوحتي الآراء في صفحة الكتاب */
+    function toggleBookPane(which, force) {
+        var panes = { book: 'paneBook', session: 'paneSession' };
+        var box = document.getElementById(panes[which]);
+        if (!box) return;
+        var on = (typeof force === 'boolean') ? force : box.classList.contains('hidden');
+        box.classList.toggle('hidden', !on);
+        var btns = document.querySelectorAll('[data-action="book-pane"]');
+        btns.forEach(function (b) {
+            var mine = b.getAttribute('data-pane') === which;
+            var open = mine && on;
+            b.className = 'w-full text-right flex items-center justify-between gap-3 border rounded-2xl px-4 py-3 transition font-bold text-sm ' +
+                (open ? 'bg-matn-emerald text-white border-matn-emerald shadow' : 'bg-white border-matn-sand text-matn-emerald hover:border-matn-gold');
+        });
+        if (on) window.setTimeout(function () { try { box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 120);
+    }
+    /* انشر مشاركة في موضوع محدَّد */
+    function addPostTopic(topic, taId) {
+        if (needsLogin()) { requireLogin('الحوار والنقاش'); return; }
+        var el = document.getElementById(taId);
+        var text = el ? el.value.trim() : '';
+        if (!text) { toast('اكتب رأيك أولاً.', 'error'); return; }
+        var d = fullDoc();
+        var u = d.authUser;
+        var acc = d.accounts[u] || {};
+        if (!Array.isArray(d.posts)) d.posts = [];
+        d.posts.unshift({
+            id: 'po-' + rnd(6), topic: topic, user: u,
+            name: acc.name || u, text: String(text).slice(0, 1500), at: new Date().toISOString()
+        });
+        saveDoc(d); state = null; refresh();
+        if (el) el.value = '';
+        toast('نُشرت مشاركتك', 'ok');
     }
 
     /* التصويت */
@@ -3922,6 +3994,9 @@
         else if (a === 'seed-demo') seedDemo();
         else if (a === 'purge-demo') purgeDemo();
         else if (a === 'toggle-book-talk') toggleBookTalk();
+        else if (a === 'book-pane') toggleBookPane(el.getAttribute('data-pane'));
+        else if (a === 'add-post-book') addPostTopic('book', 'postTextBook');
+        else if (a === 'add-post-session') addPostTopic('session', 'postTextSession');
         else if (a === 'bell') openBell();
         else if (a === 'bell-read') markAllNoticesRead();
         else if (a === 'toggle-branches') {
