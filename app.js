@@ -179,6 +179,16 @@
         return 'من ' + timeLabel(s.startsAt) + ' إلى ' + timeLabel(e);
     }
     /* فرع الصالون (إن حُدّد) */
+    /* اسم الصالون الذي سيقيم الجلسة (المقر → الفرع → المكان) */
+    function salonName(s, salon) {
+        salon = salon || (s && s.salon) || {};
+        if (salon.venue) return salon.venue;
+        var br = salonBranch(s, salon.branchId);
+        if (br) return (br.name || br.city || '') + (br.city && br.name && br.name !== br.city ? (' — ' + br.city) : '');
+        if (salon.where) return salon.where;
+        if (salon.city) return 'صالون ' + salon.city;
+        return 'صالون مَتن';
+    }
     function salonBranch(s, id) {
         if (!id) return null;
         var br = ((s && s.branches) || []).filter(function (b) { return b.id === id; })[0];
@@ -2071,6 +2081,9 @@
         });
 
         /* المدينة ووقت اللقاء ومدته والفرع */
+        document.querySelectorAll('[data-session-salon]').forEach(function (el) {
+            el.textContent = salonName(s, salon);
+        });
         document.querySelectorAll('[data-session-city]').forEach(function (el) {
             var row = el.parentElement;
             if (salon.city) { el.textContent = salon.city; if (row) row.classList.remove('hidden'); }
@@ -2440,7 +2453,7 @@
                     (b.author ? '<div class="text-xs text-matn-gold mt-1">✍ ' + esc(b.author) + '</div>' : '') +
                     (b.desc ? '<p class="text-xs text-matn-muted leading-relaxed mt-2 whitespace-pre-line">' + esc(b.desc) + '</p>' : '') +
                     (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-3 text-xs font-bold text-matn-emerald border border-matn-sand rounded-xl px-4 py-2 hover:border-matn-gold transition">تفاصيل الكتاب ↗</a>' : '') +
-                    '<a href="book.html" class="block w-full text-right mt-3 bg-white border border-dashed border-matn-sand hover:border-matn-gold rounded-xl px-4 py-2.5 text-[11px] font-bold text-matn-emerald transition">💬 اضغط لعرض آراء الأعضاء والحوار والنقاش والتصويت ›</a>' +
+                    '<a href="book.html" class="block w-full text-right mt-3 bg-white border border-dashed border-matn-sand hover:border-matn-gold rounded-xl px-4 py-2.5 text-[11px] font-bold text-matn-emerald transition">💬 آراء الأعضاء في الكتاب ›</a>' +
                 '</div></div>';
     }
 
