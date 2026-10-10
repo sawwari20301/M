@@ -236,5 +236,28 @@
             });
         })();
     </script>
+    <script>
+        /* فحص نسخة الموقع: إن كانت نسخة السيرفر أحدث يعيد تحميل الصفحة تلقائياً
+           (يحل مشكلة كاش سفاري الذي يخزّن صفحة HTML نفسها) */
+        (function () {
+            var BUILD = 50;
+            try {
+                var x = new XMLHttpRequest();
+                x.open('GET', 'build.json?t=' + Date.now(), true);
+                x.onload = function () {
+                    try {
+                        var j = JSON.parse(x.responseText || '{}');
+                        if (!j || !j.v) return;
+                        if (String(j.v) === String(BUILD)) return;
+                        var key = 'matn_reload_v' + j.v;
+                        if (sessionStorage.getItem(key)) return;
+                        sessionStorage.setItem(key, '1');
+                        location.replace(location.pathname + '?b=' + j.v + location.hash);
+                    } catch (e) {}
+                };
+                x.send();
+            } catch (e) {}
+        })();
+    </script>
 </body>
 </html>
