@@ -471,10 +471,12 @@
         if (!Array.isArray(d.posts)) { d.posts = []; dirty = true; }
         if (typeof d.poll === 'undefined') { d.poll = null; dirty = true; }
         if (!Array.isArray(d.messages)) { d.messages = []; dirty = true; }
+        if (!Array.isArray(d.notices)) { d.notices = []; dirty = true; }
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
             if (typeof a.avatar !== 'string') { a.avatar = ''; dirty = true; }
             if (typeof a.minutes !== 'number') { a.minutes = 0; dirty = true; }
+            if (!Array.isArray(a.diary)) { a.diary = []; dirty = true; }
         });
         /* حساب الدعم الفني (نظامي — لا يستطيع تسجيل الدخول) */
         if (!d.accounts.support) {
@@ -521,6 +523,7 @@
             posts: d.posts || [],
             poll: d.poll || null,
             messages: d.messages || [],
+            notices: d.authUser ? (d.notices || []).filter(function (n) { return n.to === d.authUser; }) : [],
             accounts: d.accounts || {},
             canMessage: (function () {
                 if (!acc) return false;
@@ -893,6 +896,14 @@
         { u: 'jawaher', n: 'جواهر الحربي', p: 735, m: 780 },
         { u: 'haya', n: 'هيا المطيري', p: 620, m: 640 }
     ];
+    var DEMO_DIARIES = [
+        'اليوم أنهيت الفصل السابع من «ثلاثية غرناطة»… جلست بعد العشاء أعيد قراءة صفحتين ثلاثاً. شعرت أن الغرناطي في الرواية لا يتحدث عن مدينة فقط، بل عن طريقة في العيش تنقرض بهدوء.\n\nاقتباس توقفت عنده: «وكان الفقد أكبر من أن يُحكى».',
+        'عادة صغيرة غيّرت قراءتي: أكتب في هامش الكتاب سؤالاً واحداً فقط في كل فصل، ثم أعود للأسئلة في نهاية الكتاب. اكتشفت أن معظم أسئلتي كانت عن الخوف لا عن الحكاية.',
+        'قرأت هذا الصباح في المقهى مع كوب قهوة بارد (نسيته بين الصفحات 😅). أحب أن أقرأ في الأماكن العامة — صوت الناس البعيد يجعلني أدخل النص أعمق.',
+        'يوم ثقيل قليلاً، فلم أقرأ إلا ثلاث صفحات. تعلّمت أن أتعامل مع القراءة كمزاج لا كواجب: أحياناً صفحة واحدة تفعل بالقلب أكثر من مئة.',
+        'أفكر جدياً في كتابة قائمة «كتب أعيد قراءتها كل سنة» — ليس لأنها الأفضل، بل لأنني أتغيّر وقراءتي تتغيّر معي. أول كتاب في القائمة: «موسم الهجرة إلى الشمال».',
+        'أعجبني في جلسة الصالون أن الاختلاف في التفسير لم يُفسد الحوار، بل جعله أعمق. خرجت بفكرة: لكل قارئ حقه في نسخته الخاصة من الكتاب.'
+    ];
     var DEMO_TEXTS = [
         'ثلاثية غرناطة جعلتني أعيد التفكير في معنى الفقد… أسلوب رضوى عاشور شعري حتى في النثر.',
         'أحببت أن لكل شخصية صوتاً مستقلاً — كأننا نسمع الحكاية من ست جهات.',
@@ -913,7 +924,8 @@
                   '<ul class="text-[11px] text-matn-muted mt-3 space-y-1 leading-relaxed">' + DEMO_MEMBERS.map(function (m) {
                       return '<li>• <strong class="text-matn-charcoal">' + esc(m.n) + '</strong> — @' + esc(m.u) + ' · ' + num(m.p) + ' نقطة</li>';
                   }).join('') + '</ul>' +
-                  '<p class="text-[11px] text-matn-muted mt-3">يمكنك لاحقاً <strong>إيقافهم</strong> أو <strong>حذفهم</strong> من قسم «الأعضاء».</p>',
+                  '<p class="text-[11px] text-matn-muted mt-3">مع كل حساب <strong>مذكرة في الأجندة</strong> (بمقتطف في شريط الرئيسية) و<strong>تقييمات وتعليق بانتظار الموافقة</strong> لتجربة النظام كاملاً.</p>' +
+                  '<p class="text-[11px] text-matn-muted mt-2">يمكنك لاحقاً <strong>إيقافهم</strong> أو <strong>حذفهم</strong> من قسم «الأعضاء».</p>',
             footer: '<button type="button" id="sdGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إنشاء</button>' + okBtn('إلغاء'),
             ready: function (w) {
                 w.querySelector('#sdGo').addEventListener('click', function () {
@@ -940,6 +952,40 @@
                         });
                     });
                     chain.then(function () {
+                        /* مذكرات الأجندة */
+                        DEMO_MEMBERS.forEach(function (m, i) {
+                            var d3 = fullDoc();
+                            var acc = d3.accounts[m.u];
+                            if (!acc) return;
+                            var rt = {};
+                            DEMO_MEMBERS.forEach(function (x, j) {
+                                if (x.u !== m.u && j % 2 === 0) rt[x.u] = 3 + ((i + j) % 3);
+                            });
+                            acc.diary = [{
+                                id: 'dy-' + rnd(6), text: DEMO_DIARIES[i % DEMO_DIARIES.length],
+                                at: new Date(Date.now() - (i + 1) * 30 * 3600000).toISOString(),
+                                public: true, edited: false, ratings: rt,
+                                comments: (function () {
+                                    var who = DEMO_MEMBERS[(i + 2) % 6], who2 = DEMO_MEMBERS[(i + 4) % 6];
+                                    var out = [{
+                                        id: 'dc-' + rnd(6), user: who.u, name: who.n,
+                                        text: 'أسلوبك في السرد يشبه جلسات الصالون… استمري بالكتابة 🤍',
+                                        at: new Date(Date.now() - (i + 1) * 12 * 3600000).toISOString(),
+                                        approved: true, reported: 0, hide: false
+                                    }];
+                                    if (i === 0) {
+                                        out.push({
+                                            id: 'dc-' + rnd(6), user: who2.u, name: who2.n,
+                                            text: 'سؤال: هل تقصدين بالاقتباس الفقد الشخصي أم فقد المدينة؟ أحب أن أسمع رأيك — تعليق بانتظار موافقتك.',
+                                            at: new Date(Date.now() - 5 * 3600000).toISOString(),
+                                            approved: false, reported: 0, hide: false
+                                        });
+                                    }
+                                    return out;
+                                })()
+                            }];
+                            saveDoc(d3);
+                        });
                         if (withPosts) {
                             DEMO_MEMBERS.forEach(function (m, i) {
                                 var d3 = fullDoc();
@@ -2272,6 +2318,12 @@
         renderBook(s);
         renderPosts(s);
         renderPoll(s);
+        renderDiaryStrip(s);
+        renderDiaryMenu(s);
+        renderArchive(s);
+        renderMyDiary(s);
+        renderDiaryWall(s);
+        renderBell(s);
         renderExcellence(s);
         renderFooterBranches(s);
         renderMessages(s);
@@ -2738,6 +2790,676 @@
     }
 
     /* ======================================================================
+       المذكرات (أجندة الأعضاء)
+       ====================================================================== */
+    var DIARY_MAX = 2000;
+    function diaryEntries(d, u) {
+        var a = (d.accounts || {})[u];
+        return (a && Array.isArray(a.diary)) ? a.diary : [];
+    }
+    function diaryAvg(e) {
+        var k = Object.keys(e.ratings || {});
+        if (!k.length) return { avg: 0, n: 0 };
+        var sum = 0;
+        k.forEach(function (u) { sum += Number(e.ratings[u]) || 0; });
+        return { avg: sum / k.length, n: k.length };
+    }
+    function starsHtml(n) {
+        var out = '';
+        for (var i = 1; i <= 5; i++) out += (i <= Math.round(n) ? '★' : '☆');
+        return out;
+    }
+    function diaryWord(n) {
+        if (n === 1) return 'مذكرة';
+        if (n === 2) return 'مذكرتان';
+        if (n >= 3 && n <= 10) return 'مذكرات';
+        return 'مذكرة';
+    }
+    function clip(t, n) {
+        var x = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+        return x.length > n ? x.slice(0, n) + '…' : x;
+    }
+    function publicDiaries(d) {
+        var out = [];
+        Object.keys(d.accounts || {}).forEach(function (u) {
+            var a = d.accounts[u];
+            if (!a || a.system || a.suspended) return;
+            (a.diary || []).forEach(function (e) {
+                if (e.public === false) return;
+                out.push({ u: u, name: a.name || u, avatar: a.avatar || '', e: e });
+            });
+        });
+        return out.sort(function (x, y) { return new Date(y.e.at) - new Date(x.e.at); });
+    }
+    function visibleComments(e, me, isOwner, isMod) {
+        return (e.comments || []).filter(function (c) {
+            if (c.hide) return !!isMod;                 /* المُخفى بعد ٣ إبلاغات: للمشرف فقط */
+            if (c.approved) return true;
+            return isOwner || c.user === me;            /* غير الموافَق: لصاحبة المذكرة أو كاتب التعليق */
+        });
+    }
+    function diaryRowHtml(it, opts) {
+        opts = opts || {};
+        var av = safeImg(it.avatar);
+        var n = (it.e.comments || []).filter(function (c) { return c.approved && !c.hide; }).length;
+        var rt = diaryAvg(it.e);
+        return '<button type="button" data-diary="' + esc(it.u) + '" data-entry="' + esc(it.e.id) + '" class="w-full text-right flex items-center gap-3 bg-white border border-matn-sand hover:border-matn-gold rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 transition shadow-sm">' +
+            (av
+                ? '<img src="' + esc(av) + '" alt="" class="w-9 h-9 rounded-full object-cover shrink-0 border border-matn-sand">'
+                : '<span class="w-9 h-9 rounded-full bg-matn-creamDark flex items-center justify-center font-bold text-matn-emerald shrink-0 text-xs">' + esc(String(it.name || '؟').charAt(0)) + '</span>') +
+            '<span class="min-w-0 flex-1">' +
+                '<span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">' +
+                    '<strong class="text-[11px] sm:text-xs text-matn-emerald">' + esc(it.name) + '</strong>' +
+                    '<span class="text-[10px] text-matn-muted">' + esc(fmtDate(it.e.at)) + '</span>' +
+                    (rt.n ? '<span class="text-[10px] text-amber-600">' + starsHtml(rt.avg) + ' ' + rt.avg.toFixed(1) + '</span>' : '') +
+                    (n ? '<span class="text-[10px] text-matn-muted">💬 ' + num(n) + '</span>' : '') +
+                    (opts.showPending && (it.e.comments || []).some(function (c) { return !c.approved; })
+                        ? '<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5">تعليق بانتظار موافقتك</span>' : '') +
+                '</span>' +
+                '<span class="block text-[11px] text-matn-muted truncate mt-0.5">«' + esc(clip(it.e.text, 90)) + '»</span>' +
+            '</span>' +
+            '<span class="shrink-0 text-[11px] font-bold text-matn-emerald whitespace-nowrap">للمزيد اضغط هنا ›</span>' +
+        '</button>';
+    }
+    /* شريط المذكرات في أعلى الرئيسية */
+    function renderDiaryStrip(s) {
+        var box = document.getElementById('diaryStrip');
+        if (!box) return;
+        var d = fullDoc();
+        var list = publicDiaries(d);
+        if (!list.length) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        var head =
+            '<div class="flex flex-wrap items-end justify-between gap-3 mb-4">' +
+                '<div>' +
+                    '<div class="text-[11px] font-bold tracking-[.25em] text-matn-gold">من أجندة الأعضاء</div>' +
+                    '<h2 class="font-amiri text-2xl sm:text-3xl font-bold text-matn-emerald mt-1">📔 مذكرات الأعضاء</h2>' +
+                    '<p class="text-[11px] text-matn-muted mt-1">مقتطفات من يوميات الأعضاء — اضغط أي مذكرة للمزيد والتقييم والتعليق.</p>' +
+                '</div>' +
+                '<a href="account.html#diary" class="text-[11px] font-bold text-matn-emerald bg-white border border-matn-sand px-3 py-2 rounded-xl hover:border-matn-gold transition">اكتب مذكرتك ›</a>' +
+            '</div>';
+        box.innerHTML = head + '<div class="space-y-2">' + list.slice(0, 5).map(function (it) { return diaryRowHtml(it); }).join('') + '</div>' +
+            (list.length > 5 ? '<p class="text-center mt-4"><a href="account.html#diary" class="text-[11px] font-bold text-matn-emerald hover:underline">عرض كل المذكرات (' + num(list.length) + ') ›</a></p>' : '');
+        bindDiaryRows(box);
+    }
+    /* القائمة المنسدلة للمذكرات في الترويسة */
+    function renderDiaryMenu(s) {
+        var boxes = document.querySelectorAll('[data-diary-menu]');
+        if (!boxes.length) return;
+        var d = fullDoc();
+        var list = publicDiaries(d).slice(0, 5);
+        boxes.forEach(function (el) {
+            el.innerHTML =
+                '<div class="px-2 pt-1 pb-2 text-[10px] font-bold text-matn-gold border-b border-matn-sand/60 mb-1">أحدث مذكرات الأعضاء</div>' +
+                (list.length ? list.map(function (it) {
+                    return '<button type="button" data-diary="' + esc(it.u) + '" data-entry="' + esc(it.e.id) + '" class="w-full text-right block px-2 py-2 rounded-xl hover:bg-matn-cream transition">' +
+                        '<span class="block text-[11px] font-bold text-matn-emerald">' + esc(it.name) + ' <span class="text-[9px] text-matn-muted font-normal">' + esc(fmtDate(it.e.at)) + '</span></span>' +
+                        '<span class="block text-[10px] text-matn-muted truncate">' + esc(clip(it.e.text, 55)) + '</span>' +
+                        '<span class="block text-[9px] font-bold text-matn-emerald mt-0.5">للمزيد اضغط هنا ›</span></button>';
+                }).join('') : '<div class="px-2 py-2 text-[11px] text-matn-muted">لا مذكرات عامة بعد.</div>') +
+                '<div class="border-t border-matn-sand/60 mt-1 pt-1 space-y-0.5">' +
+                    '<a href="archive.html" class="block px-2 py-2 rounded-xl text-[11px] font-bold text-matn-emerald hover:bg-matn-cream transition">🗂 أرشيف مذكراتي (بحث وفلترة)</a>' +
+                    '<a href="account.html#diary" class="block px-2 py-2 rounded-xl text-[11px] font-bold text-matn-emerald hover:bg-matn-cream transition">✍️ اكتب مذكرة جديدة</a>' +
+                '</div>';
+            bindDiaryRows(el);
+            el.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', function () { el.classList.add('hidden'); }); });
+        });
+    }
+    /* ================= أرشيف المذكرات: بحث وفلترة ================= */
+    var arState = { scope: 'mine', q: '', sort: 'new', vis: 'all', stars: 0, from: '', to: '', user: '' };
+    function arRowHtml(r, mine) {
+        var e = r.e;
+        var rt = diaryAvg(e);
+        var ap = (e.comments || []).filter(function (c) { return c.approved && !c.hide; }).length;
+        var pend = (e.comments || []).filter(function (c) { return !c.approved; }).length;
+        return '<li class="border border-matn-sand rounded-2xl p-3 bg-white space-y-2">' +
+            '<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-matn-muted">' +
+                '<strong class="text-[11px] text-matn-emerald">' + esc(r.name) + '</strong>' +
+                '<span>🗓 ' + esc(fmtDate(e.at)) + (e.edited ? ' · عُدّلت' : '') + '</span>' +
+                (e.public === false ? '<span class="font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5">خاصة</span>' : '<span class="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5">عامة</span>') +
+                (rt.n ? '<span class="text-amber-600">' + starsHtml(rt.avg) + ' ' + rt.avg.toFixed(1) + '</span>' : '<span>لا تقييم</span>') +
+                '<span>💬 ' + num(ap) + (pend ? (isMineRow(r) ? ' · <span class="text-amber-700 font-bold">' + num(pend) + ' بانتظار موافقتك</span>' : '') : '') + '</span>' +
+            '</div>' +
+            '<p class="text-xs whitespace-pre-line leading-relaxed">' + esc(e.text) + '</p>' +
+            '<div class="flex flex-wrap gap-3 pt-1">' +
+                '<button type="button" data-diary="' + esc(r.u) + '" data-entry="' + esc(e.id) + '" class="text-matn-emerald text-[11px] font-bold hover:underline">عرض / تقييم / تعليق</button>' +
+                (mine ? '<button type="button" data-aredit="' + esc(e.id) + '" class="text-matn-muted text-[11px] font-bold hover:underline">تعديل</button>' +
+                        '<button type="button" data-arepub="' + esc(e.id) + '" class="text-matn-muted text-[11px] font-bold hover:underline">' + (e.public === false ? 'اجعلها عامة' : 'اجعلها خاصة') + '</button>' +
+                        '<button type="button" data-aredel="' + esc(e.id) + '" class="text-red-700 text-[11px] font-bold hover:underline">حذف</button>' : '') +
+                '<button type="button" data-member="' + esc(r.u) + '" class="text-matn-emerald text-[11px] font-bold hover:underline">👤 ملف ' + esc(clip(r.name, 14)) + '</button>' +
+            '</div></li>';
+    }
+    function isMineRow(r) { return r.mine; }
+    function archivePick(d) {
+        var me = d.authUser;
+        var rows = [];
+        if (arState.scope === 'mine') {
+            if (!me) return [];
+            var acc = d.accounts[me] || {};
+            diaryEntries(d, me).forEach(function (e) {
+                rows.push({ u: me, name: acc.name || me, avatar: acc.avatar || '', e: e, mine: true });
+            });
+        } else {
+            rows = publicDiaries(d).map(function (x) { var y = x; y.mine = (x.u === me); return y; });
+            if (arState.user) rows = rows.filter(function (r) { return r.u === arState.user; });
+        }
+        var q = String(arState.q || '').trim();
+        if (q) rows = rows.filter(function (r) {
+            return (r.e.text + ' ' + r.name).toLowerCase().indexOf(q.toLowerCase()) !== -1;
+        });
+        if (arState.scope === 'mine' && arState.vis !== 'all') {
+            rows = rows.filter(function (r) { return arState.vis === 'public' ? r.e.public !== false : r.e.public === false; });
+        }
+        if (arState.stars) rows = rows.filter(function (r) { var a = diaryAvg(r.e); return a.n && a.avg >= arState.stars; });
+        if (arState.from) rows = rows.filter(function (r) { return String(r.e.at) >= arState.from; });
+        if (arState.to) rows = rows.filter(function (r) { return String(r.e.at) <= arState.to + 'T23:59:59'; });
+        var by = {
+            new: function (a, b) { return new Date(b.e.at) - new Date(a.e.at); },
+            old: function (a, b) { return new Date(a.e.at) - new Date(b.e.at); },
+            top: function (a, b) { return diaryAvg(b.e).avg - diaryAvg(a.e).avg; },
+            comments: function (a, b) { return (b.e.comments || []).length - (a.e.comments || []).length; }
+        };
+        return rows.sort(by[arState.sort] || by.new);
+    }
+    function renderArchive(s) {
+        var box = document.getElementById('archiveBox');
+        if (!box) return;
+        var d = fullDoc();
+        var all = archivePick(d);
+        var rtc = 0, rtn = 0, cm = 0, pend = 0;
+        all.forEach(function (r) { cm += (r.e.comments || []).length; ((r.e.comments || []).filter(function (c) { return !c.approved; }).forEach(function () { pend++; })); var a = diaryAvg(r.e); if (a.n) { rtc += a.n; rtn += a.avg * a.n; } });
+        var st = document.getElementById('arStats');
+        if (st) {
+            var full = archivePick(Object.assign({}, d));
+            st.innerHTML = '<strong class="text-matn-emerald">' + num(all.length) + '</strong> نتيجة معروضة' +
+                (arState.q || arState.vis !== 'all' || arState.stars || arState.from || arState.to || arState.user ? ' (بعد الفلترة)' : '') +
+                ' · متوسط تقييم النتائج: <strong class="text-matn-emerald">' + (rtc ? (rtn / rtc).toFixed(1) : '—') + '</strong>' +
+                ' · تعليقات: <strong class="text-matn-emerald">' + num(cm) + '</strong>' +
+                (arState.scope === 'mine' && pend ? ' · <span class="text-amber-700 font-bold">' + num(pend) + ' بانتظار موافقتك</span>' : '');
+        }
+        var cn = document.getElementById('arCount');
+        if (cn) cn.textContent = num(all.length) + ' مذكرة';
+        if (!all.length) {
+            box.innerHTML = '<li class="text-xs text-matn-muted bg-matn-cream rounded-2xl p-4 text-center">لا نتائج مطابقة.' +
+                (arState.scope === 'mine' && !s.signedIn ? ' سجّل الدخول لعرض أرشيفك.' : ' جرّب تعديل البحث أو الفلاتر.') + '</li>';
+            return;
+        }
+        box.innerHTML = all.map(function (r) { return arRowHtml(r, r.mine && arState.scope === 'mine'); }).join('');
+        bindDiaryRows(box);
+        box.querySelectorAll('[data-aredit]').forEach(function (b) { b.addEventListener('click', function () { editDiary(b.getAttribute('data-aredit')); }); });
+        box.querySelectorAll('[data-arepub]').forEach(function (b) { b.addEventListener('click', function () { toggleDiaryPublic(b.getAttribute('data-arepub')); }); });
+        box.querySelectorAll('[data-aredel]').forEach(function (b) { b.addEventListener('click', function () { deleteDiary(b.getAttribute('data-aredel')); }); });
+        box.querySelectorAll('[data-member]').forEach(function (b) { b.addEventListener('click', function () { openMember(b.getAttribute('data-member')); }); });
+    }
+    function wireArchive() {
+        if (!document.getElementById('archiveBox')) return;
+        var q = document.getElementById('arSearch');
+        var so = document.getElementById('arSort');
+        var vi = document.getElementById('arVis');
+        var sr = document.getElementById('arStars');
+        var fr = document.getElementById('arFrom');
+        var to = document.getElementById('arTo');
+        var u = new URLSearchParams(window.location.search).get('u');
+        if (u) { arState.user = u; arState.scope = 'all'; }
+        function read() {
+            arState.q = q ? q.value : '';
+            arState.sort = so ? so.value : 'new';
+            arState.vis = vi ? vi.value : 'all';
+            arState.stars = sr ? Number(sr.value) || 0 : 0;
+            arState.from = fr ? fr.value : '';
+            arState.to = to ? to.value : '';
+            var t = document.getElementById('arScopeLabel');
+            renderArchive(load());
+            if (t) t.textContent = arState.user ? ('مذكرات ' + ((fullDoc().accounts[arState.user] || {}).name || arState.user)) : '';
+        }
+        [q, so, vi, sr, fr, to].forEach(function (el) { if (el) el.addEventListener('input', read); if (el) el.addEventListener('change', read); });
+        var rs = document.getElementById('arReset');
+        if (rs) rs.addEventListener('click', function () {
+            arState.q = ''; arState.sort = 'new'; arState.vis = 'all'; arState.stars = 0; arState.from = ''; arState.to = ''; arState.user = '';
+            if (q) q.value = ''; if (so) so.value = 'new'; if (vi) vi.value = 'all'; if (sr) sr.value = '0'; if (fr) fr.value = ''; if (to) to.value = '';
+            arState.scope = 'mine';
+            switchArchiveScope('mine');
+            read();
+        });
+        document.querySelectorAll('[data-action="archive-tab"]').forEach(function (b) {
+            b.addEventListener('click', function () { switchArchiveScope(b.getAttribute('data-scope')); read(); });
+        });
+        switchArchiveScope(u ? 'all' : 'mine');
+        read();
+    }
+    function switchArchiveScope(scope) {
+        arState.scope = scope;
+        document.querySelectorAll('[data-action="archive-tab"]').forEach(function (b) {
+            var on = b.getAttribute('data-scope') === scope;
+            b.className = 'text-xs font-bold px-4 py-2 rounded-xl transition ' +
+                (on ? 'bg-matn-emerald text-white shadow' : 'bg-white border border-matn-sand text-matn-muted hover:border-matn-gold');
+        });
+        var vw = document.getElementById('arVisWrap');
+        if (vw) vw.classList.toggle('hidden', scope !== 'mine');
+        if (scope !== 'all') { arState.user = ''; var t = document.getElementById('arScopeLabel'); if (t) t.textContent = ''; }
+    }
+
+    /* جدار المذكرات (في الملف الشخصي) */
+    function renderDiaryWall(s) {
+        var box = document.getElementById('diaryWall');
+        if (!box) return;
+        var d = fullDoc();
+        var list = publicDiaries(d).filter(function (it) { return it.u !== d.authUser; });
+        box.innerHTML = list.length
+            ? '<div class="space-y-2">' + list.map(function (it) { return diaryRowHtml(it); }).join('') + '</div>'
+            : '<p class="text-xs text-matn-muted">لا مذكرات عامة من الأعضاء بعد.</p>';
+        bindDiaryRows(box);
+    }
+    /* مذكراتي (إدارة) */
+    function renderMyDiary(s) {
+        var box = document.getElementById('myDiaryList');
+        var card = document.getElementById('diaryCard');
+        if (card) card.classList.toggle('hidden', !s.signedIn);
+        if (!box) return;
+        if (!s.signedIn) { box.innerHTML = ''; return; }
+        var d = fullDoc();
+        var mine = diaryEntries(d, d.authUser).slice().sort(function (a, b) { return new Date(b.at) - new Date(a.at); });
+        box.innerHTML = mine.length ? mine.map(function (e) {
+            var rt = diaryAvg(e);
+            var pending = (e.comments || []).filter(function (c) { return !c.approved; });
+            var cms = (e.comments || []).filter(function (c) { return c.approved || !c.approved; });
+            return '<li class="border border-matn-sand rounded-2xl p-3 space-y-2 bg-white">' +
+                '<div class="flex flex-wrap items-center justify-between gap-2 text-[10px] text-matn-muted">' +
+                    '<span>🗓 ' + esc(fmtDate(e.at)) + (e.edited ? ' · عُدّلت' : '') + ' · ' +
+                        (e.public === false ? '<span class="font-bold text-amber-700">خاصة (لك وحدك)</span>' : '<span class="font-bold text-emerald-700">عامة</span>') + '</span>' +
+                    '<span>' + (rt.n ? '<span class="text-amber-600">' + starsHtml(rt.avg) + '</span> ' + rt.avg.toFixed(1) + ' (' + num(rt.n) + ' تقييم)' : 'لا تقييم بعد') + '</span>' +
+                '</div>' +
+                '<p class="text-xs whitespace-pre-line leading-relaxed">' + esc(e.text) + '</p>' +
+                (pending.length ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-2 space-y-2">' +
+                    '<div class="text-[11px] font-bold text-amber-800">⏳ تعليقات بانتظار موافقتك (' + num(pending.length) + ') — لا يراها غيرك حتى توافق:</div>' +
+                    pending.map(function (c) {
+                        return '<div class="bg-white rounded-lg p-2 text-[11px] space-y-1">' +
+                            '<div class="text-matn-muted"><strong class="text-matn-charcoal">' + esc(c.name || c.user) + '</strong> · ' + esc(fmtDate(c.at)) + '</div>' +
+                            '<div class="whitespace-pre-line">' + esc(c.text) + '</div>' +
+                            '<div class="flex flex-wrap gap-2 pt-1">' +
+                                '<button type="button" data-approve="' + esc(c.id) + '" data-owner="' + esc(d.authUser) + '" data-entry="' + esc(e.id) + '" class="bg-matn-emerald text-white px-2.5 py-1 rounded-lg text-[10px] font-bold">✔ إظهار للجميع</button>' +
+                                '<button type="button" data-report="' + esc(c.id) + '" data-owner="' + esc(d.authUser) + '" data-entry="' + esc(e.id) + '" class="bg-white border border-red-200 text-red-700 px-2.5 py-1 rounded-lg text-[10px] font-bold">🚩 إبلاغ عن إساءة</button>' +
+                                '<button type="button" data-reject="' + esc(c.id) + '" data-owner="' + esc(d.authUser) + '" data-entry="' + esc(e.id) + '" class="text-matn-muted px-2.5 py-1 rounded-lg text-[10px] font-bold hover:underline">حذف التعليق</button>' +
+                            '</div></div>';
+                    }).join('') + '</div>' : '') +
+                (cms.filter(function (c) { return c.approved; }).length ? '<div class="space-y-1">' + cms.filter(function (c) { return c.approved; }).map(function (c) {
+                    return '<div class="bg-matn-cream rounded-lg p-2 text-[11px]"><strong class="text-matn-emerald">' + esc(c.name || c.user) + '</strong>' +
+                        (c.hide ? ' <span class="text-[9px] text-red-700 font-bold">مخفي بعد إبلاغات</span>' : '') +
+                        ' <span class="text-matn-muted">· ' + esc(fmtDate(c.at)) + '</span><div class="whitespace-pre-line mt-0.5">' + esc(c.text) + '</div>' +
+                        (c.hide ? '' : '<button type="button" data-report="' + esc(c.id) + '" data-owner="' + esc(d.authUser) + '" data-entry="' + esc(e.id) + '" class="text-red-700 text-[10px] font-bold mt-1 hover:underline">🚩 إبلاغ</button>') +
+                        '</div>';
+                }).join('') + '</div>' : '') +
+                '<div class="flex flex-wrap gap-2 pt-1">' +
+                    '<button type="button" data-diaryopen="' + esc(e.id) + '" class="text-matn-emerald text-[11px] font-bold hover:underline">عرض / تقييم</button>' +
+                    '<button type="button" data-diaryedit="' + esc(e.id) + '" class="text-matn-muted text-[11px] font-bold hover:underline">تعديل</button>' +
+                    '<button type="button" data-diarypub="' + esc(e.id) + '" class="text-matn-muted text-[11px] font-bold hover:underline">' + (e.public === false ? 'اجعلها عامة' : 'اجعلها خاصة') + '</button>' +
+                    '<button type="button" data-diarydel="' + esc(e.id) + '" class="text-red-700 text-[11px] font-bold hover:underline">حذف</button>' +
+                '</div></li>';
+        }).join('') : '<li class="text-xs text-matn-muted">لا مذكرات بعد — اكتب أول مذكرة أعلاه. ✍️</li>';
+        box.querySelectorAll('[data-diaryopen]').forEach(function (b) {
+            b.addEventListener('click', function () { openDiary(fullDoc().authUser, b.getAttribute('data-diaryopen')); });
+        });
+        box.querySelectorAll('[data-diaryedit]').forEach(function (b) {
+            b.addEventListener('click', function () { editDiary(b.getAttribute('data-diaryedit')); });
+        });
+        box.querySelectorAll('[data-diarypub]').forEach(function (b) {
+            b.addEventListener('click', function () { toggleDiaryPublic(b.getAttribute('data-diarypub')); });
+        });
+        box.querySelectorAll('[data-diarydel]').forEach(function (b) {
+            b.addEventListener('click', function () { deleteDiary(b.getAttribute('data-diarydel')); });
+        });
+        box.querySelectorAll('[data-approve]').forEach(function (b) {
+            b.addEventListener('click', function () { approveComment(b.getAttribute('data-owner'), b.getAttribute('data-entry'), b.getAttribute('data-approve')); });
+        });
+        box.querySelectorAll('[data-reject]').forEach(function (b) {
+            b.addEventListener('click', function () { rejectComment(b.getAttribute('data-owner'), b.getAttribute('data-entry'), b.getAttribute('data-reject')); });
+        });
+        box.querySelectorAll('[data-report]').forEach(function (b) {
+            b.addEventListener('click', function () { reportComment(b.getAttribute('data-owner'), b.getAttribute('data-entry'), b.getAttribute('data-report')); });
+        });
+    }
+    /* تبويبا: مذكراتي / مذكرات الأعضاء */
+    function switchDiaryTab(tab) {
+        document.querySelectorAll('[data-action="diary-tab"]').forEach(function (b) {
+            var on = b.getAttribute('data-tab') === tab;
+            b.className = 'text-xs font-bold px-4 py-2 rounded-xl transition ' +
+                (on ? 'bg-matn-emerald text-white shadow' : 'bg-white border border-matn-sand text-matn-muted hover:border-matn-gold');
+        });
+        var mine = document.getElementById('diaryMinePane');
+        var wall = document.getElementById('diaryWallPane');
+        if (mine) mine.classList.toggle('hidden', tab !== 'mine');
+        if (wall) wall.classList.toggle('hidden', tab !== 'wall');
+    }
+
+    function findEntry(d, u, eid) {
+        var l = diaryEntries(d, u);
+        for (var i = 0; i < l.length; i++) { if (l[i].id === eid) return l[i]; }
+        return null;
+    }
+    function bindDiaryRows(root) {
+        (root || document).querySelectorAll('[data-diary]').forEach(function (b) {
+            b.addEventListener('click', function () { openDiary(b.getAttribute('data-diary'), b.getAttribute('data-entry')); });
+        });
+    }
+    /* نافذة المذكرة: النص كاملاً + النجوم + التعليقات */
+    function openDiary(u, eid) {
+        var s = load();
+        var d = fullDoc();
+        var acc = d.accounts[u];
+        if (!acc) return;
+        var e = findEntry(d, u, eid);
+        if (!e) return;
+        var me = d.authUser;
+        var isOwner = me === u;
+        var isMod = !!(s.user.super || s.user.isAdmin);
+        if (e.public === false && !isOwner && !isMod) { toast('هذه المذكرة خاصة.', 'error'); return; }
+        var rt = diaryAvg(e);
+        var comments = visibleComments(e, me, isOwner, isMod);
+        var pub = comments.filter(function (c) { return c.approved || c.user === me || isOwner; });
+        var av = safeImg(acc.avatar);
+        var rated = me && e.ratings ? e.ratings[me] : null;
+
+        var body =
+            '<div class="flex items-center gap-2 pb-3 border-b border-matn-sand/60">' +
+                (av ? '<img src="' + esc(av) + '" class="w-10 h-10 rounded-full object-cover" alt="">'
+                    : '<span class="w-10 h-10 rounded-full bg-matn-creamDark flex items-center justify-center font-bold text-matn-emerald">' + esc(String(acc.name || u).charAt(0)) + '</span>') +
+                '<div class="min-w-0"><button type="button" data-member="' + esc(u) + '" class="font-bold text-sm text-matn-emerald hover:underline">' + esc(acc.name || u) + ' ›</button>' +
+                '<div class="text-[10px] text-matn-muted">🗓 ' + esc(fmtDate(e.at)) + (e.edited ? ' · عُدّلت' : '') +
+                (e.public === false ? ' · <span class="font-bold text-amber-700">خاصة</span>' : '') + '</div></div>' +
+            '</div>' +
+            '<p class="text-sm whitespace-pre-line leading-relaxed max-h-56 overflow-auto bg-matn-cream rounded-2xl p-3 border border-matn-sand">' + esc(e.text) + '</p>' +
+            /* النجوم */
+            '<div class="flex flex-wrap items-center gap-2 bg-white border border-matn-sand rounded-2xl px-3 py-2">' +
+                '<span class="text-[11px] font-bold text-matn-emerald">التقييم:</span>' +
+                '<span class="text-sm text-amber-500" id="dmStars">' + starsHtml(rt.avg) + '</span>' +
+                '<span class="text-[11px] text-matn-muted">' + (rt.n ? (rt.avg.toFixed(1) + ' من 5 · ' + num(rt.n) + ' مقيّم') : 'لا تقييم بعد') + '</span>' +
+                (isOwner ? '' : (me
+                    ? '<span class="flex items-center gap-1 mr-auto">' + [1, 2, 3, 4, 5].map(function (i) {
+                        return '<button type="button" data-rate="' + i + '" class="text-lg leading-none ' + (rated && i <= rated ? 'text-amber-500' : 'text-matn-sand hover:text-amber-400') + '">★</button>';
+                      }).join('') + '</span>'
+                    : '<span class="text-[10px] text-matn-muted mr-auto">سجّل الدخول لتقييمها</span>')) +
+            '</div>' +
+            /* التعليقات */
+            '<div class="space-y-2">' +
+                '<div class="text-[11px] font-bold text-matn-emerald">💬 التعليقات' + (isOwner && (e.comments || []).some(function (c) { return !c.approved; }) ? ' — <span class="text-amber-700">لديك تعليقات بانتظار موافقتك</span>' : '') + '</div>' +
+                (pub.length ? pub.map(function (c) {
+                    var mineC = c.user === me;
+                    return '<div class="rounded-xl p-2.5 text-[11px] ' + (c.approved ? 'bg-matn-cream border border-matn-sand' : 'bg-amber-50 border border-amber-200') + '">' +
+                        '<div class="flex flex-wrap items-center gap-2"><strong class="text-matn-emerald">' + esc(c.name || c.user) + '</strong>' +
+                        '<span class="text-[9px] text-matn-muted">' + esc(fmtDate(c.at)) + '</span>' +
+                        (!c.approved ? '<span class="text-[9px] font-bold text-amber-800 bg-white border border-amber-200 rounded-full px-1.5">بانتظار موافقة صاحبة المذكرة</span>' : '') +
+                        (c.hide ? '<span class="text-[9px] font-bold text-red-700 bg-red-50 border border-red-200 rounded-full px-1.5">مخفي بعد إبلاغات</span>' : '') + '</div>' +
+                        '<div class="whitespace-pre-line mt-1 leading-relaxed">' + esc(c.text) + '</div>' +
+                        '<div class="flex flex-wrap gap-2 mt-1">' +
+                            (isOwner && !c.approved ? '<button type="button" data-approve="' + esc(c.id) + '" class="bg-matn-emerald text-white px-2.5 py-1 rounded-lg text-[10px] font-bold">✔ إظهار للجميع</button>' +
+                                '<button type="button" data-reject="' + esc(c.id) + '" class="text-matn-muted text-[10px] font-bold hover:underline">حذف</button>' : '') +
+                            (mineC ? '' : '<button type="button" data-report="' + esc(c.id) + '" class="text-red-700 text-[10px] font-bold hover:underline">🚩 إبلاغ</button>') +
+                        '</div></div>';
+                  }).join('') : '<p class="text-[11px] text-matn-muted">لا تعليقات ظاهرة بعد.</p>') +
+                ((me && !isOwner)
+                    ? '<label class="matn-field"><span>اكتب تعليقاً (لا يظهر حتى توافق عليه صاحبة المذكرة)</span><textarea class="matn-input" id="dmText" rows="2" maxlength="600" placeholder="تعليقك…"></textarea></label>' +
+                      '<button type="button" id="dmSend" class="w-full bg-matn-emerald hover:bg-matn-emeraldLight text-white py-2.5 rounded-xl text-xs font-bold transition">أرسل التعليق</button>'
+                    : (me ? '' : '<p class="text-[10px] text-matn-muted">سجّل الدخول للتعليق.</p>')) +
+            '</div>';
+
+        modal({
+            title: isOwner ? 'مذكرتي' : ('مذكرة ' + (acc.name || u)),
+            body: body,
+            footer: okBtn('إغلاق'),
+            ready: function (w) {
+                w.querySelectorAll('[data-rate]').forEach(function (b) {
+                    b.addEventListener('click', function () { rateDiary(u, eid, Number(b.getAttribute('data-rate'))); });
+                });
+                var send = w.querySelector('#dmSend');
+                if (send) send.addEventListener('click', function () {
+                    if (commentDiary(u, eid, w.querySelector('#dmText').value)) closeModal();
+                });
+                w.querySelectorAll('[data-approve]').forEach(function (b) {
+                    b.addEventListener('click', function () { approveComment(u, eid, b.getAttribute('data-approve')); });
+                });
+                w.querySelectorAll('[data-reject]').forEach(function (b) {
+                    b.addEventListener('click', function () { rejectComment(u, eid, b.getAttribute('data-reject')); });
+                });
+                w.querySelectorAll('[data-report]').forEach(function (b) {
+                    b.addEventListener('click', function () { reportComment(u, eid, b.getAttribute('data-report')); });
+                });
+                w.querySelectorAll('[data-member]').forEach(function (b) {
+                    b.addEventListener('click', function () { closeModal(); openMember(b.getAttribute('data-member')); });
+                });
+            }
+        });
+    }
+    /* إضافة / تعديل / حذف */
+    function addDiary(text, isPublic) {
+        if (needsLogin()) { requireLogin('المذكرات'); return false; }
+        var t = String(text || '').trim();
+        if (t.length < 10) { toast('اكتب مذكرة أطول قليلاً (10 أحرف على الأقل).', 'error'); return false; }
+        if (t.length > DIARY_MAX) { toast('المذكرة تتجاوز ' + num(DIARY_MAX) + ' حرف.', 'error'); return false; }
+        var d = fullDoc();
+        var acc = d.accounts[d.authUser];
+        if (!acc.diary) acc.diary = [];
+        acc.diary.unshift({ id: 'dy-' + rnd(6), text: t, at: new Date().toISOString(), public: isPublic !== false, ratings: {}, comments: [] });
+        if (isPublic !== false) {
+            acc.points = (acc.points || 0) + 10;
+            acc.ledger = acc.ledger || [];
+            acc.ledger.unshift({ reason: 'نشر مذكرة في الأجندة', points: 10, at: new Date().toISOString() });
+        }
+        saveDoc(d); state = null; refresh();
+        toast('أُضيفت مذكرتك' + (isPublic !== false ? ' (+10 نقاط)' : ' (خاصة)'), 'ok');
+        return true;
+    }
+    function editDiary(eid) {
+        var d = fullDoc();
+        var e = findEntry(d, d.authUser, eid);
+        if (!e) return;
+        modal({
+            title: 'تعديل المذكرة',
+            body: '<label class="matn-field"><span>نص المذكرة</span><textarea class="matn-input" id="edText" rows="8" maxlength="' + DIARY_MAX + '">' + esc(e.text) + '</textarea></label><p class="text-[10px] text-matn-muted" id="edCount"></p>',
+            footer: '<button type="button" id="edGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ التعديل</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                var ta = w.querySelector('#edText'), cnt = w.querySelector('#edCount');
+                function upd() { cnt.textContent = ta.value.length + ' / ' + DIARY_MAX + ' حرف'; cnt.className = 'text-[10px] ' + (ta.value.length >= DIARY_MAX ? 'text-red-700 font-bold' : 'text-matn-muted'); }
+                ta.addEventListener('input', upd); upd();
+                w.querySelector('#edGo').addEventListener('click', function () {
+                    var t = ta.value.trim();
+                    if (!t.length || t.length > DIARY_MAX) { toast('النص غير صالح.', 'error'); return; }
+                    var d2 = fullDoc();
+                    var e2 = findEntry(d2, d2.authUser, eid);
+                    if (!e2) return;
+                    e2.text = t; e2.edited = true; e2.at = e2.at;
+                    saveDoc(d2); state = null; closeModal(); refresh();
+                    toast('حُفظ التعديل', 'ok');
+                });
+            }
+        });
+    }
+    function deleteDiary(eid) {
+        confirmBox('حذف المذكرة', 'ستُحذف المذكرة وتقييماتها وتعليقاتها نهائياً.', function () {
+            var d = fullDoc();
+            var acc = d.accounts[d.authUser];
+            acc.diary = (acc.diary || []).filter(function (e) { return e.id !== eid; });
+            saveDoc(d); state = null; refresh();
+            toast('حُذفت المذكرة', 'ok');
+        }, 'حذف');
+    }
+    function toggleDiaryPublic(eid) {
+        var d = fullDoc();
+        var e = findEntry(d, d.authUser, eid);
+        if (!e) return;
+        e.public = (e.public === false);
+        saveDoc(d); state = null; refresh();
+        toast(e.public ? 'المذكرة صارت عامة' : 'المذكرة صارت خاصة (لك وحدك)', 'ok');
+    }
+    /* تفاعل الآخرين */
+    function rateDiary(u, eid, stars) {
+        var d = fullDoc();
+        if (!d.authUser) { requireLogin('التقييم'); return; }
+        if (d.authUser === u) { toast('لا يمكنك تقييم مذكرتك.', 'error'); return; }
+        var e = findEntry(d, u, eid);
+        if (!e) return;
+        e.ratings = e.ratings || {};
+        e.ratings[d.authUser] = stars;
+        saveDoc(d); state = null;
+        var own = d.accounts[u];
+        if (own) { own.points = (own.points || 0) + 2; }   /* نقطتان لصاحبة المذكرة */
+        saveDoc(d);
+        refresh(); closeModal(); window.setTimeout(function () { openDiary(u, eid); }, 150);
+        toast('شكراً لتقييمك (' + stars + ' ★)', 'ok');
+    }
+    function commentDiary(u, eid, text) {
+        var d = fullDoc();
+        if (!d.authUser) { requireLogin('التعليق'); return false; }
+        var t = String(text || '').trim();
+        if (!t.length) { toast('اكتب نص التعليق.', 'error'); return false; }
+        if (t.length > 600) { toast('التعليق طويل — الحد 600 حرف.', 'error'); return false; }
+        var e = findEntry(d, u, eid);
+        if (!e) return false;
+        if (!Array.isArray(e.comments)) e.comments = [];
+        e.comments.push({
+            id: 'dc-' + rnd(6), user: d.authUser, name: (d.accounts[d.authUser] || {}).name || d.authUser,
+            text: t, at: new Date().toISOString(), approved: false, reported: 0, hide: false
+        });
+        saveDoc(d);
+        pushNotice([u], '💬 تعليق جديد على مذكرتك بانتظار موافقتك — من ' + ((d.accounts[d.authUser] || {}).name || d.authUser), 'comment', d.authUser);
+        state = null; refresh();
+        toast('أُرسل التعليق — سيظهر بعد موافقة صاحبة المذكرة', 'ok');
+        return true;
+    }
+    function approveComment(u, eid, cid) {
+        var d = fullDoc();
+        if (d.authUser !== u) { toast('الموافقة لصاحبة المذكرة فقط.', 'error'); return; }
+        var e = findEntry(d, u, eid);
+        if (!e) return;
+        var c = (e.comments || []).filter(function (x) { return x.id === cid; })[0];
+        if (!c) return;
+        c.approved = true;
+        saveDoc(d);
+        pushNotice([c.user], '✅ نُشر تعليقك على مذكرة ' + ((d.accounts[u] || {}).name || u), 'ok', u);
+        state = null; refresh();
+        toast('ظهر التعليق للجميع', 'ok');
+    }
+    function rejectComment(u, eid, cid) {
+        var d = fullDoc();
+        if (d.authUser !== u) return;
+        var e = findEntry(d, u, eid);
+        if (!e) return;
+        e.comments = (e.comments || []).filter(function (x) { return x.id !== cid; });
+        saveDoc(d); state = null; refresh();
+        toast('حُذف التعليق', 'ok');
+    }
+    function reportComment(u, eid, cid) {
+        var d = fullDoc();
+        if (!d.authUser) { requireLogin('الإبلاغ'); return; }
+        var e = findEntry(d, u, eid);
+        if (!e) return;
+        var c = (e.comments || []).filter(function (x) { return x.id === cid; })[0];
+        if (!c) return;
+        c.reported = (c.reported || 0) + 1;
+        var hidden = c.reported >= 3;
+        if (hidden) c.hide = true;
+        var ownerName = (d.accounts[u] || {}).name || u;
+        var reporter = (d.accounts[d.authUser] || {}).name || d.authUser;
+        var txt = '🚩 إبلاغ عن تعليق مسيء' +
+            '\nالمذكرة: «' + clip(e.text, 45) + '» لـ ' + ownerName +
+            '\nالتعليق: «' + clip(c.text, 140) + '»' +
+            '\nبقلم: ' + (c.name || c.user) +
+            '\nالمُبلِّغ: ' + reporter +
+            '\nعدد الإبلاغات: ' + num(c.reported) + (hidden ? ' — أُخفي تلقائياً عن الجميع (يبقى للمشرف العام)' : '');
+        var targets = adminsOf(d, d.authUser);
+        if (!Array.isArray(d.notices)) d.notices = [];
+        if (!Array.isArray(d.messages)) d.messages = [];
+        var at = new Date().toISOString();
+        targets.forEach(function (t) {
+            d.notices.unshift({ id: 'nt-' + rnd(6), to: t, text: txt, kind: 'report', from: d.authUser, at: at, read: false });
+            d.messages.unshift({ id: 'ms-' + rnd(6), from: d.authUser, to: t, text: txt, at: at, read: false, system: true });
+        });
+        saveDoc(d);
+        state = null; load(); render();
+        toast(hidden ? 'أُخفي التعليق وأُبلغ المشرف العام والمديرون' : 'أُرسل الإبلاغ إلى المشرف العام والمديرين', 'ok');
+    }
+
+    /* ======================================================================
+       التنبيهات (جرس الإشعارات)
+       ====================================================================== */
+    function pushNotice(tos, text, kind, from) {
+        var d = fullDoc();
+        if (!Array.isArray(d.notices)) d.notices = [];
+        var at = new Date().toISOString();
+        (tos || []).forEach(function (t) {
+            d.notices.unshift({ id: 'nt-' + rnd(6), to: t, text: text, kind: kind || 'info', from: from || '', at: at, read: false });
+        });
+        saveDoc(d);
+    }
+    function adminsOf(d, exclude) {
+        return Object.keys(d.accounts || {}).filter(function (u) {
+            var a = d.accounts[u];
+            return a && !a.system && !a.suspended && (a.super || a.isAdmin) && u !== exclude;
+        });
+    }
+    function sysMessage(from, to, text) {
+        var d = fullDoc();
+        if (!Array.isArray(d.messages)) d.messages = [];
+        d.messages.unshift({ id: 'ms-' + rnd(6), from: from, to: to, text: text, at: new Date().toISOString(), read: false, system: true });
+        saveDoc(d);
+    }
+    function renderBell(s) {
+        var btn = document.getElementById('bellBtn');
+        if (!btn) return;
+        var count = (s.notices || []).filter(function (n) { return !n.read; }).length;
+        var hidden = !s.signedIn;
+        btn.classList.toggle('hidden', hidden);
+        var c = document.getElementById('bellCount');
+        if (c) {
+            c.textContent = count > 9 ? '٩+' : num(count);
+            c.classList.toggle('hidden', !count);
+        }
+        var menu = document.getElementById('bellMenu');
+        if (menu && !menu.classList.contains('hidden')) renderBellList(s);
+    }
+    function renderBellList(s) {
+        var menu = document.getElementById('bellMenu');
+        if (!menu) return;
+        var list = (s.notices || []).slice(0, 15);
+        menu.innerHTML = '<div class="flex items-center justify-between gap-2 mb-2">' +
+                '<strong class="text-xs text-matn-emerald">🔔 التنبيهات</strong>' +
+                (list.length ? '<button type="button" data-action="bell-read" class="text-[10px] text-matn-muted font-bold hover:underline">تعليم الكل كمقروء</button>' : '') +
+            '</div>' +
+            (list.length ? '<ul class="space-y-2 max-h-72 overflow-auto">' + list.map(function (n) {
+                return '<li class="text-[11px] border-b border-matn-sand/60 pb-2 ' + (n.read ? 'opacity-70' : '') + '">' +
+                    '<div class="whitespace-pre-line leading-relaxed">' + esc(n.text) + '</div>' +
+                    '<div class="text-[9px] text-matn-muted mt-0.5">' + esc(fmtDate(n.at)) + (n.read ? '' : ' · جديد') + '</div></li>';
+            }).join('') + '</ul>' : '<p class="text-[11px] text-matn-muted">لا تنبيهات.</p>');
+    }
+    function openBell() {
+        var menu = document.getElementById('bellMenu');
+        if (!menu) return;
+        var willShow = menu.classList.contains('hidden');
+        menu.classList.toggle('hidden', !willShow);
+        if (willShow) {
+            var s = load();
+            renderBellList(s);
+            /* تعليم الكل كمقروء بعد فتح القائمة */
+            var d = fullDoc();
+            var changed = false;
+            (d.notices || []).forEach(function (n) {
+                if (n.to === d.authUser && !n.read) { n.read = true; changed = true; }
+            });
+            if (changed) {
+                saveDoc(d); state = null;
+                var c = document.getElementById('bellCount');
+                if (c) { c.textContent = ''; c.classList.add('hidden'); }
+            }
+        }
+    }
+    function markAllNoticesRead() {
+        var d = fullDoc();
+        var changed = false;
+        (d.notices || []).forEach(function (n) { if (n.to === d.authUser && !n.read) { n.read = true; changed = true; } });
+        if (changed) { saveDoc(d); state = null; refresh(); }
+        toast('عُلّمت التنبيهات كمقروءة', 'ok');
+    }
+
+    /* ======================================================================
        التواجد والتميّز (وسام التميز)
        ====================================================================== */
     function hoursText(min) {
@@ -2753,11 +3475,84 @@
         var a = (d.accounts || {})[u] || {};
         var replies = (d.posts || []).filter(function (p) { return p.user === u; }).length;
         var points = a.points || 0, minutes = a.minutes || 0;
+        var diaries = (a.diary || []).filter(function (e) { return e.public !== false; }).length;
+        var received = 0;
+        (a.diary || []).forEach(function (e) { received += (e.comments || []).filter(function (c) { return c.approved; }).length; });
         return {
             u: u, name: a.name || u, avatar: a.avatar || '', points: points,
-            replies: replies, minutes: minutes,
-            score: points + replies * 15 + Math.floor(minutes / 5)
+            replies: replies, minutes: minutes, diaries: diaries, received: received,
+            score: points + replies * 15 + Math.floor(minutes / 5) + diaries * 8
         };
+    }
+    /* عدد التعليقات التي كتبها العضو في مذكرات الآخرين */
+    function commentsBy(u, d) {
+        var n = 0;
+        Object.keys(d.accounts || {}).forEach(function (k) {
+            ((d.accounts[k].diary) || []).forEach(function (e) {
+                (e.comments || []).forEach(function (c) { if (c.user === u) n++; });
+            });
+        });
+        return n;
+    }
+    function diaryCount(u, d) {
+        var a = (d.accounts || {})[u] || {};
+        var all = (a.diary || []).length;
+        var pub = (a.diary || []).filter(function (e) { return e.public !== false; }).length;
+        return { all: all, pub: pub, priv: all - pub };
+    }
+    /* ملف العضو */
+    function openMember(u) {
+        var d = fullDoc();
+        var a = d.accounts[u];
+        if (!a) return;
+        var me = d.authUser;
+        var s = load();
+        var st = memberStats(u, d);
+        var dc = diaryCount(u, d);
+        var cms = commentsBy(u, d);
+        var av = safeImg(a.avatar);
+        var ratings = 0, rsum = 0;
+        (a.diary || []).forEach(function (e) {
+            var k = Object.keys(e.ratings || {}); ratings += k.length;
+            k.forEach(function (x) { rsum += Number(e.ratings[x]) || 0; });
+        });
+        var avg = ratings ? (rsum / ratings).toFixed(1) : '—';
+        var can = s.canMessage || me === u;
+        var isMe = me === u;
+        var need = Math.max(0, 500 - ((d.accounts[me] || {}).points || 0));
+        var body =
+            '<div class="text-center">' +
+                (av ? '<img src="' + esc(av) + '" class="w-20 h-20 rounded-full object-cover mx-auto border-2 border-matn-gold" data-zoom="' + esc(av) + '" alt="">'
+                    : '<div class="w-20 h-20 rounded-full mx-auto border-2 border-matn-gold bg-matn-creamDark flex items-center justify-center font-amiri text-3xl font-bold text-matn-emerald">' + esc(String(a.name || u).charAt(0)) + '</div>') +
+                '<div class="font-bold text-matn-emerald mt-2">' + esc(a.name || u) + '</div>' +
+                '<div class="text-[11px] text-matn-muted">@' + esc(u) + ' · ' +
+                    (a.system ? 'حساب نظامي' : a.super ? 'المشرف العام' : (a.isAdmin ? 'مشرف' : 'عضو')) +
+                    (a.suspended ? ' · <span class="text-red-700 font-bold">موقوف</span>' : '') + '</div>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 gap-2 text-center text-[11px]">' +
+                '<div class="bg-matn-cream rounded-xl p-2 border border-matn-sand"><div class="text-matn-muted">نقاط الولاء</div><div class="font-bold text-matn-emerald">' + num(st.points) + '</div></div>' +
+                '<div class="bg-matn-cream rounded-xl p-2 border border-matn-sand"><div class="text-matn-muted">ساعات التواجد</div><div class="font-bold text-matn-emerald">' + esc(hoursText(st.minutes)) + '</div></div>' +
+                '<div class="bg-matn-cream rounded-xl p-2 border border-matn-sand"><div class="text-matn-muted">تفاعل النقاش</div><div class="font-bold text-matn-emerald">' + num(st.replies) + '</div></div>' +
+                '<div class="bg-matn-cream rounded-xl p-2 border border-matn-sand"><div class="text-matn-muted">📔 المذكرات</div><div class="font-bold text-matn-emerald">' + num(dc.all) + ' ' + diaryWord(dc.all) + (isMe ? (' <span class="text-[9px] text-matn-muted">(' + num(dc.pub) + ' عامة · ' + num(dc.priv) + ' خاصة)</span>') : '') + '</div></div>' +
+                '<div class="bg-matn-cream rounded-xl p-2 border border-matn-sand"><div class="text-matn-muted">💬 تعليقاته</div><div class="font-bold text-matn-emerald">' + num(cms) + '</div></div>' +
+                '<div class="bg-matn-cream rounded-xl p-2 border border-matn-sand"><div class="text-matn-muted">⭐ متوسط تقييم مذكراته</div><div class="font-bold text-matn-emerald">' + esc(String(avg)) + (ratings ? ' <span class="text-[9px] text-matn-muted">(' + num(ratings) + ' تقييم)</span>' : '') + '</div></div>' +
+            '</div>' +
+            (isMe ? '<p class="text-[11px] text-matn-muted text-center">هذا ملفك الشخصي.</p>'
+                  : (can
+                     ? '<button type="button" id="mbMsg" class="w-full bg-matn-emerald hover:bg-matn-emeraldLight text-white py-3 rounded-xl text-xs font-bold shadow transition">📨 مراسلته برسالة خاصة</button>'
+                     : '<p class="text-[11px] bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center">🔒 الرسائل الخاصة تُفتح بعد <strong>500 نقطة ولاء</strong> — تحتاج <strong>' + num(need) + '</strong> نقطة (رصيدك ' + num((d.accounts[me] || {}).points || 0) + ').</p>')) +
+            (dc.pub ? '<button type="button" id="mbDiary" class="w-full bg-white border border-matn-sand hover:border-matn-gold py-3 rounded-xl text-xs font-bold transition">📔 عرض مذكراته (' + num(dc.pub) + ')</button>' : '');
+        modal({
+            title: 'ملف العضو',
+            body: body,
+            footer: okBtn('إغلاق'),
+            ready: function (w) {
+                var b = w.querySelector('#mbMsg');
+                if (b) b.addEventListener('click', function () { closeModal(); newMessageForm(false, u); });
+                var bd = w.querySelector('#mbDiary');
+                if (bd) bd.addEventListener('click', function () { window.location.href = 'archive.html?u=' + encodeURIComponent(u); });
+            }
+        });
     }
     function topMembers(d, n) {
         return Object.keys(d.accounts || {})
@@ -2789,31 +3584,37 @@
         var slots = list.slice();
         while (slots.length < 6) slots.push(null);
         box.innerHTML =
-            '<div class="text-center mb-6">' +
-                '<div class="text-[11px] font-bold tracking-[.3em] text-matn-gold">نادي مَتن</div>' +
-                '<h2 class="font-amiri text-3xl font-bold text-matn-emerald mt-2">🏵 وسام التميّز</h2>' +
-                '<p class="text-xs text-matn-muted mt-2">أكثر الأعضاء تفاعلاً — بالنقاط وساعات التواجد والردود</p>' +
+            '<div class="text-center mb-5">' +
+                '<div class="text-[10px] sm:text-[11px] font-bold tracking-[.3em] text-matn-gold">نادي مَتن</div>' +
+                '<h2 class="font-amiri text-2xl sm:text-3xl font-bold text-matn-emerald mt-1.5">🏵 وسام التميّز</h2>' +
+                '<p class="text-[11px] sm:text-xs text-matn-muted mt-1.5">أكثر الأعضاء تفاعلاً — بالنقاط والتفاعل وساعات التواجد</p>' +
             '</div>' +
-            '<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">' + slots.map(function (m, i) {
-                if (!m) return '<div class="rounded-3xl border-2 border-dashed border-matn-sand bg-white/50 p-4 flex flex-col items-center justify-center min-h-[10rem] text-center">' +
-                    '<div class="text-2xl opacity-35">' + medals[i] + '</div>' +
-                    '<div class="text-[11px] text-matn-muted mt-3 leading-relaxed">مقعد متاح<br>تفاعل بالنقاط والردود لتصل هنا</div></div>';
+            /* ٣ في الصف دائماً (حتى الجوال) ثم ٣ أسفلها */
+            '<div class="grid grid-cols-3 gap-2 sm:gap-4">' + slots.map(function (m, i) {
+                if (!m) return '<div data-card="empty" class="rounded-2xl sm:rounded-3xl border-2 border-dashed border-matn-sand bg-white/50 p-2 sm:p-4 flex flex-col items-center justify-center min-h-[9rem] sm:min-h-[11rem] text-center">' +
+                    '<div class="text-lg sm:text-2xl opacity-35">' + medals[i] + '</div>' +
+                    '<div class="text-[9px] sm:text-[11px] text-matn-muted mt-2 leading-relaxed">مقعد متاح<br><span class="hidden sm:inline">تفاعل بالنقاط والتفاعل لتصل هنا</span></div></div>';
                 var av = safeImg(m.avatar);
-                return '<div class="relative rounded-3xl p-[2px] bg-gradient-to-br from-matn-gold via-matn-goldLight to-matn-emeraldDark shadow-sm">' +
-                    '<div class="bg-white rounded-[22px] p-4 text-center h-full">' +
-                        '<div class="text-2xl">' + medals[i] + '</div>' +
+                return '<button type="button" data-card="member" data-member="' + esc(m.u) + '" title="ملف العضو" class="text-center relative rounded-2xl sm:rounded-3xl p-[2px] bg-gradient-to-br from-matn-gold via-matn-goldLight to-matn-emeraldDark shadow-sm hover:scale-[1.02] transition">' +
+                    '<div class="bg-white rounded-[14px] sm:rounded-[22px] p-2 sm:p-4 text-center h-full flex flex-col items-center">' +
+                        '<div class="text-base sm:text-2xl leading-none">' + medals[i] + '</div>' +
                         (av
-                            ? '<img src="' + esc(av) + '" alt="' + esc(m.name) + '" class="w-16 h-16 rounded-full object-cover mx-auto mt-2 border-2 border-matn-gold" data-zoom="' + esc(av) + '">'
-                            : '<div class="w-16 h-16 rounded-full mx-auto mt-2 border-2 border-matn-gold bg-matn-creamDark flex items-center justify-center font-amiri text-2xl font-bold text-matn-emerald">' + esc(String(m.name || '؟').charAt(0)) + '</div>') +
-                        '<div class="font-bold text-sm mt-2 text-matn-emerald">' + esc(m.name) + '</div>' +
-                        '<div class="grid grid-cols-3 gap-1 mt-3 text-[10px]">' +
-                            '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + num(m.points) + '</div><div class="text-matn-muted">نقطة</div></div>' +
-                            '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + esc(hoursText(m.minutes)) + '</div><div class="text-matn-muted">تواجد</div></div>' +
-                            '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + num(m.replies) + '</div><div class="text-matn-muted">ردود</div></div>' +
+                            ? '<img src="' + esc(av) + '" alt="' + esc(m.name) + '" class="w-11 h-11 sm:w-16 sm:h-16 rounded-full object-cover mt-1.5 sm:mt-2 border-2 border-matn-gold" data-zoom="' + esc(av) + '">'
+                            : '<div class="w-11 h-11 sm:w-16 sm:h-16 rounded-full mt-1.5 sm:mt-2 border-2 border-matn-gold bg-matn-creamDark flex items-center justify-center font-amiri text-base sm:text-2xl font-bold text-matn-emerald">' + esc(String(m.name || '؟').charAt(0)) + '</div>') +
+                        '<div class="font-bold text-[10px] sm:text-sm mt-1.5 sm:mt-2 text-matn-emerald leading-tight">' + esc(m.name) + '</div>' +
+                        /* البيانات أسفل بعضها */
+                        '<div class="w-full mt-1.5 sm:mt-3 space-y-1">' +
+                            '<div class="bg-matn-cream rounded-lg py-1 px-1 text-[9px] sm:text-[11px] leading-tight"><span class="font-bold text-matn-emerald">' + num(m.points) + '</span> <span class="text-matn-muted">نقطة</span></div>' +
+                            '<div class="bg-matn-cream rounded-lg py-1 px-1 text-[9px] sm:text-[11px] leading-tight"><span class="font-bold text-matn-emerald">' + num(m.replies) + '</span> <span class="text-matn-muted">تفاعل</span></div>' +
+                            '<div class="bg-matn-cream rounded-lg py-1 px-1 text-[9px] sm:text-[11px] leading-tight"><span class="font-bold text-matn-emerald">' + esc(hoursText(m.minutes)) + '</span> <span class="text-matn-muted">تواجد</span></div>' +
+                            '<div class="bg-matn-cream rounded-lg py-1 px-1 text-[9px] sm:text-[11px] leading-tight"><span class="font-bold text-matn-emerald">' + num(m.diaries || 0) + '</span> <span class="text-matn-muted">' + diaryWord(m.diaries || 0) + '</span></div>' +
                         '</div>' +
-                    '</div></div>';
+                    '</div></button>';
             }).join('') + '</div>' +
-            (list.length ? '' : '<p class="text-center mt-6"><a href="account.html" class="inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white text-xs font-bold px-5 py-3 rounded-xl shadow transition">أنشئ حسابك وكن أول المتميّزين</a></p>');
+            (list.length ? '' : '<p class="text-center mt-5"><a href="account.html" class="inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white text-[11px] sm:text-xs font-bold px-5 py-3 rounded-xl shadow transition">أنشئ حسابك وكن أول المتميّزين</a></p>');
+        box.querySelectorAll('[data-member]').forEach(function (b) {
+            b.addEventListener('click', function () { openMember(b.getAttribute('data-member')); });
+        });
     }
     /* روابط الفروع في أسفل الصفحة */
     function renderFooterBranches(s) {
@@ -2863,8 +3664,13 @@
                 return '<option value="' + esc(u) + '">' + esc(a.name || u) + (a.system ? ' (الدعم الفني)' : '') + '</option>';
             }).join('');
     }
-    function newMessageForm(asSupport) {
-        if (!asSupport && !load().canMessage) { toast('الرسائل الخاصة تُفتح بعد 500 نقطة.', 'error'); return; }
+    function newMessageForm(asSupport, toUser) {
+        var sv = load();
+        if (!asSupport && !sv.canMessage) {
+            var need = 500 - (sv.user.points || 0);
+            toast('🔒 الرسائل الخاصة تُفتح بعد 500 نقطة — تحتاج ' + num(need) + ' نقطة.', 'error');
+            return;
+        }
         var d = fullDoc();
         var me = asSupport ? 'support' : d.authUser;
         modal({
@@ -2874,6 +3680,7 @@
                   (asSupport ? '<p class="text-[10px] text-matn-muted">ستُرسل باسم: الدعم الفني لنادي القراءة</p>' : ''),
             footer: '<button type="button" id="nmGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إرسال</button>' + okBtn('إلغاء'),
             ready: function (w) {
+                if (toUser && d.accounts[toUser] && w.querySelector('#nmTo')) w.querySelector('#nmTo').value = toUser;
                 w.querySelector('#nmGo').addEventListener('click', function () {
                     var ok = sendMessage(w.querySelector('#nmTo').value, w.querySelector('#nmText').value, asSupport ? 'support' : null);
                     if (ok) closeModal();
@@ -2984,6 +3791,14 @@
         if (mnu && !mnu.classList.contains('hidden') && !e.target.closest('[data-action="toggle-branches"]') && !e.target.closest('#branchesMenu')) {
             mnu.classList.add('hidden');
         }
+        var dmn = document.getElementById('diaryMenu');
+        if (dmn && !dmn.classList.contains('hidden') && !e.target.closest('[data-action="toggle-diaries"]') && !e.target.closest('#diaryMenu')) {
+            dmn.classList.add('hidden');
+        }
+        var blm = document.getElementById('bellMenu');
+        if (blm && !blm.classList.contains('hidden') && !e.target.closest('[data-action="bell"]') && !e.target.closest('#bellMenu')) {
+            blm.classList.add('hidden');
+        }
         var el = e.target.closest('[data-action]');
         if (!el) return;
         var a = el.getAttribute('data-action');
@@ -3008,9 +3823,19 @@
         else if (a === 'support-reply') newMessageForm(true);
         else if (a === 'seed-demo') seedDemo();
         else if (a === 'purge-demo') purgeDemo();
+        else if (a === 'bell') openBell();
+        else if (a === 'bell-read') markAllNoticesRead();
         else if (a === 'toggle-branches') {
             var mnu = document.getElementById('branchesMenu');
             if (mnu) mnu.classList.toggle('hidden');
+            var dm0 = document.getElementById('diaryMenu');
+            if (dm0) dm0.classList.add('hidden');
+        }
+        else if (a === 'toggle-diaries') {
+            var dm = document.getElementById('diaryMenu');
+            if (dm) dm.classList.toggle('hidden');
+            var bm2 = document.getElementById('branchesMenu');
+            if (bm2) bm2.classList.add('hidden');
         }
         else if (a === 'add-branch') branchForm(null);
         else if (a === 'edit-book') bookForm();
@@ -3076,7 +3901,49 @@
         });
     }
 
-    function boot() { wireAccountPage(); refresh(); startPresence(); }
+    function wireDiaryForm() {
+        var ta = document.getElementById('diaryText');
+        var cnt = document.getElementById('diaryCount');
+        var go = document.querySelector('[data-action="add-diary"]');
+        var priv = document.getElementById('diaryPrivate');
+        if (!ta) return;
+        function upd() {
+            var n = ta.value.length;
+            if (cnt) {
+                cnt.textContent = num(n) + ' / ' + num(DIARY_MAX) + ' حرف' + (n >= DIARY_MAX ? ' — وصلت الحد الأقصى' : '');
+                cnt.className = 'text-[10px] mt-1 ' + (n >= DIARY_MAX ? 'text-red-700 font-bold' : 'text-matn-muted');
+            }
+            if (go) {
+                var bad = n > DIARY_MAX;
+                go.disabled = bad;
+                go.className = 'bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition ' + (bad ? 'opacity-40 cursor-not-allowed' : '');
+            }
+        }
+        var todayEl = document.getElementById('diaryToday');
+        if (todayEl) todayEl.textContent = 'اليوم ' + fmtDate(new Date().toISOString());
+        ta.setAttribute('maxlength', String(DIARY_MAX));
+        ta.addEventListener('input', upd);
+        upd();
+        if (go && !go.dataset.wired) {
+            go.dataset.wired = '1';
+            go.addEventListener('click', function () {
+                var isPublic = !(priv && priv.checked);
+                if (addDiary(ta.value, isPublic)) { ta.value = ''; upd(); }
+            });
+        }
+        document.querySelectorAll('[data-action="diary-tab"]').forEach(function (b) {
+            if (b.dataset.wired) return;
+            b.dataset.wired = '1';
+            b.addEventListener('click', function () { switchDiaryTab(b.getAttribute('data-tab')); });
+        });
+        switchDiaryTab(window.location.hash === '#diary' ? 'mine' : 'mine');
+        if (window.location.hash === '#diary') {
+            var box = document.getElementById('diaryCard');
+            if (box) window.setTimeout(function () { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 400);
+        }
+    }
+
+    function boot() { wireAccountPage(); wireDiaryForm(); wireArchive(); refresh(); startPresence(); }
 
     /* تحديث العدّ التنازلي حيّاً بلا إعادة رسم (كي لا يُفسد ما يكتبه المستخدم) */
     window.setInterval(function () {
