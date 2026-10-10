@@ -90,8 +90,8 @@
                 <span class="text-xs bg-matn-gold/20 text-matn-emeraldDark font-bold px-2 py-0.5 rounded">مشرف عام</span>
             </div>
             <div class="flex flex-wrap gap-2">
-                <button type="button" data-action="add-partner" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">+ إضافة شريك</button>
-                <button type="button" data-action="generate-code" class="bg-white border border-matn-sand hover:border-matn-gold px-4 py-2.5 rounded-xl text-xs font-bold transition">توليد قسيمة شحن</button>
+                <button type="button" data-action="add-partner" data-need-perm="partners" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">+ إضافة شريك</button>
+                <button type="button" data-action="generate-code" data-need-perm="codes" class="bg-white border border-matn-sand hover:border-matn-gold px-4 py-2.5 rounded-xl text-xs font-bold transition">توليد قسيمة شحن</button>
             </div>
         </div>
 
@@ -129,19 +129,19 @@
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div data-need-perm="partners" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
                 <h2 id="sec-partners" class="font-bold font-amiri text-lg text-matn-emerald">الشركاء في الدليل</h2>
                 <p class="text-[11px] text-matn-muted">أي شريك تضيفه يظهر فوراً في صفحة «دليل الشركاء».</p>
                 <ul id="adminPartnerList" class="text-xs"></ul>
             </div>
-            <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div data-need-perm="codes" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
                 <h2 id="sec-codes" class="font-bold font-amiri text-lg text-matn-emerald">قسائم الشحن</h2>
                 <p class="text-[11px] text-matn-muted">القسائم المتاحة والقابلة للشحن من صفحة المحفظة.</p>
                 <ul id="adminCodeList" class="text-xs"></ul>
             </div>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+        <div data-need-perm="recording" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
             <h2 id="sec-recording" class="font-bold font-amiri text-lg text-matn-emerald">التسجيل المرئي للجلسة</h2>
             <p class="text-[11px] text-matn-muted">ضع رابط ملف فيديو مباشر (‎.mp4‎ أو ‎.webm‎) ليُشغَّل في صفحة التسجيلات.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -152,28 +152,31 @@
             <button type="button" data-action="save-recording" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ التسجيل</button>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 id="sec-session" class="font-bold font-amiri text-lg text-matn-emerald">الجلسة القادمة</h2>
-            <p class="text-[11px] text-matn-muted">ما تعدّله هنا يظهر فوراً في الصفحة الرئيسية وصفحة الحجز.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label class="matn-field sm:col-span-2"><span>عنوان الجلسة</span><input class="matn-input" id="seTitle" type="text"></label>
-                <label class="matn-field"><span>الموعد</span><input class="matn-input" id="seWhen" type="text"></label>
-                <label class="matn-field"><span>الميسّر</span><input class="matn-input" id="seFac" type="text"></label>
-                <label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="seWhere" type="text"></label>
-                <label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="seCap" type="number" min="1" step="1"></label>
+        <div data-need-perm="salons" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="sec-salons" class="font-bold font-amiri text-lg text-matn-emerald">الصالونات</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">أضف صالوناً أو عدّله أو احذفه، وعيّن أيهم «الجلسة القادمة» يظهر في الرئيسية وصفحة الحجز.</p>
+                </div>
+                <button type="button" data-action="add-salon" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">+ إضافة صالون</button>
             </div>
-            <p id="seMsg" class="text-xs"></p>
-            <button type="button" data-action="save-session" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ الجلسة</button>
+            <ul id="adminSalonList" class="text-xs space-y-3"></ul>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 id="sec-members" class="font-bold font-amiri text-lg text-matn-emerald">الأعضاء</h2>
-            <p class="text-[11px] text-matn-muted">كل من سجّل في الموقع — منح/خصم نقاط · ترقية أو إزالة مشرف · إلغاء حجزه · كلمة مرور جديدة · حذف العضو.</p>
+        <div data-need-perm="members" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="sec-members" class="font-bold font-amiri text-lg text-matn-emerald">الأعضاء</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">أضف أعضاء، وامنح أو اسحب الصلاحيات بزر واحد، مع منح/خصم النقاط وكلمة المرور وإلغاء الحجز والحذف.</p>
+                </div>
+                <button type="button" data-action="add-member" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">+ إضافة عضو</button>
+            </div>
             <ul id="adminMemberList" class="text-xs"></ul>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+        <div data-need-perm="bookings" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
             <h2 id="sec-bookings" class="font-bold font-amiri text-lg text-matn-emerald">الحجوزات</h2>
+            <p class="text-[11px] text-matn-muted">من قسم الأعضاء يمكنك إلغاء حجز أي عضو — يُفرَّغ المقعد تلقائياً.</p>
             <ul id="adminBookingList" class="text-xs"></ul>
         </div>
 

@@ -21,6 +21,21 @@
         seats: 6
     };
 
+    /* ---------- الصلاحيات ---------- */
+    var PERMS = [
+        { key: 'salons', label: 'إدارة الصالونات' },
+        { key: 'members', label: 'إدارة الأعضاء والصلاحيات' },
+        { key: 'bookings', label: 'الحجوزات' },
+        { key: 'partners', label: 'الشركاء' },
+        { key: 'codes', label: 'قسائم الشحن' },
+        { key: 'recording', label: 'التسجيل المرئي' }
+    ];
+    var ALL_PERMS = PERMS.map(function (p) { return p.key; });
+    function permLabel(k) {
+        for (var i = 0; i < PERMS.length; i++) if (PERMS[i].key === k) return PERMS[i].label;
+        return k;
+    }
+
     var CATEGORIES = [
         { label: 'عناية ومشاغل نسائية', cls: 'bg-matn-gold/20 text-matn-emerald' },
         { label: 'لياقة وبدنية نسائية', cls: 'bg-blue-50 text-blue-800' },
@@ -76,7 +91,11 @@
         return {
             accounts: {},
             authUser: null,
-            salon: { title: SESSION.title, when: SESSION.when, where: SESSION.where, facilitator: SESSION.facilitator, capacity: SESSION.seats },
+            salons: [{
+                id: 'salon-1', title: SESSION.title, when: SESSION.when, where: SESSION.where,
+                facilitator: SESSION.facilitator, capacity: SESSION.seats, featured: true,
+                at: new Date().toISOString()
+            }],
             seatsLeft: SESSION.seats,
             partners: SEED_PARTNERS.slice(),
             giftCodes: JSON.parse(JSON.stringify(SEED_CODES)),
@@ -93,13 +112,81 @@
     }
     function saveDoc(d) { try { store.set(KEY, JSON.stringify(d)); } catch (e) {} }
 
+    /* ---------- الصالونات: قائمة واحدة، واحد منها «القادم» ---------- */
+    function featuredSalon(d) {
+        var l = (d && d.salons) || [];
+        if (!l.length) return null;
+        for (var i = 0; i < l.length; i++) if (l[i].featured) return l[i];
+        l[0].featured = true;
+        return l[0];
+    }
+    function salonById(d, id) {
+        var l = (d && d.salons) || [];
+        for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i];
+        return null;
+    }
+    /* المقاعد المشغولة تُحسب من الحجوزات — لا عدّاد منفصل يتعارض معها */
+    function takenOf(d, sid) {
+        var n = 0;
+        Object.keys(d.accounts || {}).forEach(function (u) {
+            var b = d.accounts[u].booking;
+            if (b && (!b.salonId || b.salonId === sid)) n++;
+        });
+        return n;
+    }
+    function seatsLeftOf(d, salon) {
+        if (!salon) return 0;
+        return Math.max(0, (salon.capacity || 0) - takenOf(d, salon.id));
+    }
+    function newSalonId(d) {
+        var n = 1, id;
+        do { id = 'salon-' + n++; } while (salonById(d, id));
+        return id;
+    }
+
+    /* ---------- ترحيل البيانات القديمة ---------- */
+    function migrateAll(d) {
+        var dirty = false;
+        /* صالون واحد قديم → قائمة صالونات */
+        if (!Array.isArray(d.salons) || !d.salons.length) {
+            var b = d.salon || { title: SESSION.title, when: SESSION.when, where: SESSION.where, facilitator: SESSION.facilitator, capacity: SESSION.seats };
+            d.salons = [{
+                id: 'salon-1', title: b.title, when: b.when, where: b.where,
+                facilitator: b.facilitator, capacity: b.capacity || SESSION.seats,
+                featured: true, at: new Date().toISOString()
+            }];
+            dirty = true;
+        }
+        var feat = featuredSalon(d);
+        Object.keys(d.accounts || {}).forEach(function (u) {
+            var a = d.accounts[u];
+            /* مشرف قديم بلا صلاحيات → كل الصلاحيات */
+            if (a.isAdmin && !a.super && !Array.isArray(a.perms)) { a.perms = ALL_PERMS.slice(); dirty = true; }
+            if (!Array.isArray(a.perms)) { a.perms = []; dirty = true; }
+            /* حجز قديم بلا صالون → يُنسب للصالون القادم */
+            if (a.booking && !a.booking.salonId && feat) { a.booking.salonId = feat.id; dirty = true; }
+            /* مشرف واحد فقط: أول مشرف = المشرف العام */
+        });
+        var admins = Object.keys(d.accounts || {}).filter(function (u) { return d.accounts[u].isAdmin; });
+        if (admins.length && !admins.some(function (u) { return d.accounts[u].super; })) {
+            d.accounts[admins[0]].super = true;
+            d.accounts[admins[0]].perms = ALL_PERMS.slice();
+            dirty = true;
+        }
+        if (dirty) saveDoc(d);
+        return d;
+    }
+
     var state = null;
 
     function load() {
         if (state) return state;
-        var d = doc();
-        migrateSuper(d);
+        var d = migrateAll(doc());
         var acc = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
+        var feat = featuredSalon(d) || {
+            id: 'salon-1', title: SESSION.title, when: SESSION.when, where: SESSION.where,
+            facilitator: SESSION.facilitator, capacity: SESSION.seats, featured: true
+        };
         state = {
             signedIn: !!acc,
             user: {
@@ -107,10 +194,12 @@
                 name: acc ? (acc.name || d.authUser) : '',
                 points: acc ? (typeof acc.points === 'number' ? acc.points : 340) : 0,
                 isAdmin: !!(acc && acc.isAdmin),
-                super: !!(acc && acc.super)
+                super: !!(acc && acc.super),
+                perms: acc ? (acc.super ? ALL_PERMS.slice() : (acc.perms || []).slice()) : []
             },
-            salon: d.salon || seedDoc().salon,
-            seatsLeft: typeof d.seatsLeft === 'number' ? d.seatsLeft : SESSION.seats,
+            salon: feat,
+            salons: d.salons || [],
+            seatsLeft: seatsLeftOf(d, feat),
             partners: Array.isArray(d.partners) && d.partners.length ? d.partners : SEED_PARTNERS.slice(),
             giftCodes: d.giftCodes && typeof d.giftCodes === 'object' ? d.giftCodes : JSON.parse(JSON.stringify(SEED_CODES)),
             recording: d.recording && typeof d.recording === 'object' ? d.recording : { title: '', url: '' },
@@ -123,8 +212,7 @@
 
     function persist() {
         var d = doc();
-        d.seatsLeft = state.seatsLeft;
-        d.salon = state.salon;
+        d.salons = state.salons;
         d.partners = state.partners;
         d.giftCodes = state.giftCodes;
         d.recording = state.recording;
@@ -136,6 +224,9 @@
             d.accounts[u].ledger = state.ledger;
         }
         d.authUser = u || null;
+        /* المقاعد مشتقة دائماً من الحجوزات */
+        state.seatsLeft = seatsLeftOf(d, state.salon);
+        d.seatsLeft = state.seatsLeft;
         saveDoc(d);
     }
 
@@ -195,6 +286,7 @@
                 vouchers: [], booking: null,
                 isAdmin: first,                  // أول حساب = المشرف
                 super: first,                    // وهو «المشرف العام» دائماً
+                perms: first ? ALL_PERMS.slice() : [],
                 createdAt: new Date().toISOString()
             };
             d.authUser = uname;
@@ -239,29 +331,24 @@
         state = null; load(); render();
     }
 
-    /* ---------- المشرف العام ----------
-       أول حساب مسجّل في الموقع يحمل super=true. للحسابات القديمة (قبل إضافة
-       الخاصية) نرقّي أول مشرف تلقائياً — والعملية حسابية لا تحفظ شيئاً إن لم تلزم. */
-    function migrateSuper(d) {
-        var admins = Object.keys(d.accounts || {}).filter(function (u) { return d.accounts[u].isAdmin; });
-        if (!admins.length) return;
-        if (admins.some(function (u) { return d.accounts[u].super; })) return;
-        d.accounts[admins[0]].super = true;
-        saveDoc(d);
-    }
-    function superName() {
-        var d = doc();
-        var admins = Object.keys(d.accounts).filter(function (u) { return d.accounts[u].isAdmin; });
-        return admins.filter(function (u) { return d.accounts[u].super; })[0] || admins[0] || null;
-    }
+    /* ---------- المشرف العام والصلاحيات ----------
+       أول حساب مسجّل يحمل super=true (كل الصلاحيات دائماً، ولا يُجرَّد ولا يُحذف).
+       بقية الأعضاء يأخذون صلاحيات محدّدة في acc.perms. */
     function hasAdmin() {
         var d = doc();
         return Object.keys(d.accounts).some(function (u) { return d.accounts[u].isAdmin; });
     }
-    function freeSeat(d) {
-        var cap = (d.salon && d.salon.capacity) || SESSION.seats;
-        var cur = typeof d.seatsLeft === 'number' ? d.seatsLeft : cap;
-        d.seatsLeft = Math.min(cap, cur + 1);
+    function can(perm) {
+        var st = load();
+        if (!st.signedIn) return false;
+        if (st.user.super) return true;
+        if (!perm) return st.user.isAdmin;
+        return st.user.perms.indexOf(perm) !== -1;
+    }
+    function needPerm(perm, what) {
+        if (needsLogin()) { requireLogin(what); return false; }
+        if (!can(perm)) { toast('لا تملك صلاحية «' + permLabel(perm) + '».', 'error'); return false; }
+        return true;
     }
 
     /* نافذة تأكيد */
@@ -279,14 +366,13 @@
 
     /* حذف عضو (وإلغاء حجزه) */
     function removeMember(uname) {
-        if (!adminOnly('لوحة الإشراف')) return;
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
         var d = doc();
         var a = d.accounts[uname];
         if (!a) return;
         if (a.super) { toast('لا يمكن حذف المشرف العام.', 'error'); return; }
         var booked = !!a.booking;
         confirmBox('حذف العضو', 'سيُحذف حساب «' + a.name + '» نهائياً' + (booked ? '، ويُلغى حجزه ويُفرغ مقعده' : '') + '. لا يمكن التراجع.', function () {
-            if (booked) freeSeat(d);
             delete d.accounts[uname];
             if (d.authUser === uname) d.authUser = null;
             saveDoc(d); state = null; load(); render();
@@ -296,21 +382,20 @@
 
     /* إلغاء حجز عضو من اللوحة */
     function cancelBookingFor(uname) {
-        if (!adminOnly('لوحة الإشراف')) return;
+        if (!needPerm('bookings', 'الحجوزات')) return;
         var d = doc();
         var a = d.accounts[uname];
         if (!a || !a.booking) return;
         confirmBox('إلغاء الحجز', 'سيُلغى حجز «' + a.name + '» (تذكرة ' + a.booking.code + ') ويُفرغ المقعد.', function () {
             a.booking = null;
-            freeSeat(d);
-            saveDoc(d); state = null; load(); render();
+            saveDoc(d); refresh();
             toast('أُلغي الحجز وأُفرغ المقعد', 'ok');
         }, 'إلغاء الحجز');
     }
 
     /* تعيين كلمة مرور جديدة لعضو */
     function resetPassword(uname) {
-        if (!adminOnly('لوحة الإشراف')) return;
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
         var d = doc();
         var a = d.accounts[uname];
         if (!a) return;
@@ -345,6 +430,7 @@
         if (!u || !d.accounts[u]) return;
         d.accounts[u].isAdmin = true;
         d.accounts[u].super = true;
+        d.accounts[u].perms = ALL_PERMS.slice();
         saveDoc(d); state = null; load(); render();
         toast('أصبحت المشرف العام — كل مزايا اللوحة متاحة لك', 'ok');
     }
@@ -352,34 +438,162 @@
     /* ---------- إجراءات لوحة التحكم ---------- */
     function adminOnly(what) {
         if (needsLogin()) { requireLogin(what); return false; }
-        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return false; }
+        if (!can(null)) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return false; }
         return true;
     }
 
-    function saveSalon() {
-        if (!adminOnly('لوحة الإشراف')) return;
-        var t = document.getElementById('seTitle').value.trim();
-        var w = document.getElementById('seWhen').value.trim();
-        var f = document.getElementById('seFac').value.trim();
-        var p = document.getElementById('seWhere').value.trim();
-        var c = parseInt(document.getElementById('seCap').value, 10);
-        var msg = document.getElementById('seMsg');
-        if (!t) { msg.textContent = 'اكتب عنوان الجلسة.'; msg.className = 'text-xs text-red-700'; return; }
-        if (!(c > 0)) { msg.textContent = 'أدخل عدد مقاعد صحيحاً.'; msg.className = 'text-xs text-red-700'; return; }
-        var booked = 0;
-        var D = doc();
-        Object.keys(D.accounts).forEach(function (u) { if (D.accounts[u].booking) booked++; });
-        change(function (st) {
-            st.salon = { title: t, when: w, where: p, facilitator: f, capacity: c };
-            st.seatsLeft = Math.max(0, c - booked);
+    /* ---------- إدارة الصالونات (إضافة / تعديل / حذف / تعيين القادم) ---------- */
+    function salonForm(id) {
+        if (!needPerm('salons', 'إدارة الصالونات')) return;
+        var d = doc();
+        var s = id ? salonById(d, id) : null;
+        var isNew = !s;
+        var v = s || { title: '', when: '', where: '', facilitator: '', capacity: SESSION.seats };
+        modal({
+            title: isNew ? 'إضافة صالون جديد' : 'تعديل الصالون',
+            body: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                    '<label class="matn-field sm:col-span-2"><span>عنوان الجلسة</span><input class="matn-input" id="sfTitle" type="text" value="' + esc(v.title) + '"></label>' +
+                    '<label class="matn-field"><span>الموعد</span><input class="matn-input" id="sfWhen" type="text" value="' + esc(v.when) + '" placeholder="السبت القادم • 7:30 مساءً"></label>' +
+                    '<label class="matn-field"><span>الميسّر</span><input class="matn-input" id="sfFac" type="text" value="' + esc(v.facilitator) + '"></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '"></label>' +
+                    '<label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="sfCap" type="number" min="1" step="1" value="' + (v.capacity || 6) + '"></label>' +
+                  '</div><p id="sfMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#sfGo').addEventListener('click', function () {
+                    var t = w.querySelector('#sfTitle').value.trim();
+                    var cap = parseInt(w.querySelector('#sfCap').value, 10);
+                    var m = w.querySelector('#sfMsg');
+                    if (!t) { m.textContent = 'اكتب عنوان الجلسة.'; m.className = 'text-xs text-red-700'; return; }
+                    if (!(cap > 0)) { m.textContent = 'أدخل عدد مقاعد صحيحاً.'; m.className = 'text-xs text-red-700'; return; }
+                    var doc2 = migrateAll(doc());
+                    var data = {
+                        title: t,
+                        when: w.querySelector('#sfWhen').value.trim(),
+                        facilitator: w.querySelector('#sfFac').value.trim(),
+                        where: w.querySelector('#sfWhere').value.trim(),
+                        capacity: cap
+                    };
+                    if (isNew) {
+                        data.id = newSalonId(doc2);
+                        data.featured = doc2.salons.length === 0;
+                        data.at = new Date().toISOString();
+                        doc2.salons.push(data);
+                    } else {
+                        var t2 = salonById(doc2, id);
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; }
+                    }
+                    saveDoc(doc2);
+                    closeModal(); refresh();
+                    toast(isNew ? 'أُضيف الصالون' : 'حُفظت تعديلات الصالون', 'ok');
+                });
+            }
         });
-        msg.textContent = 'حُفظت الجلسة — ظهرت في الرئيسية وصفحة الحجز.';
-        msg.className = 'text-xs text-emerald-700';
-        toast('حُفظت بيانات الجلسة', 'ok');
+    }
+
+    function setFeaturedSalon(id) {
+        if (!needPerm('salons', 'إدارة الصالونات')) return;
+        var d = migrateAll(doc());
+        d.salons.forEach(function (s) { s.featured = (s.id === id); });
+        saveDoc(d); refresh();
+        toast('صار هذا الصالون هو القادم — يظهر في الرئيسية والحجز', 'ok');
+    }
+
+    function deleteSalon(id) {
+        if (!needPerm('salons', 'إدارة الصالونات')) return;
+        var d = migrateAll(doc());
+        if (d.salons.length <= 1) { toast('لا يمكن حذف الصالون الأخير — الموقع يحتاج صالوناً واحداً على الأقل.', 'error'); return; }
+        var s = salonById(d, id);
+        if (!s) return;
+        var booked = 0;
+        Object.keys(d.accounts).forEach(function (u) { var b = d.accounts[u].booking; if (b && b.salonId === id) booked++; });
+        confirmBox('حذف الصالون', 'سيُحذف «' + s.title + '»' +
+            (booked ? ' — وله ' + num(booked) + ' حجز قائم سيُلغى وتُفرَّغ مقاعده' : '') + '. لا يمكن التراجع.', function () {
+            var d2 = migrateAll(doc());
+            if (s.featured) {
+                var other = d2.salons.filter(function (x) { return x.id !== id; })[0];
+                if (other) other.featured = true;
+            }
+            Object.keys(d2.accounts).forEach(function (u) {
+                var b = d2.accounts[u].booking;
+                if (b && b.salonId === id) d2.accounts[u].booking = null;
+            });
+            d2.salons = d2.salons.filter(function (x) { return x.id !== id; });
+            saveDoc(d2); refresh();
+            toast('حُذف الصالون' + (booked ? ' وأُلغيت حجوزاته' : ''), 'ok');
+        }, 'حذف');
+    }
+
+    /* ---------- إدارة الأعضاء والصلاحيات ---------- */
+    function addMemberForm() {
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
+        modal({
+            title: 'إضافة عضو جديد',
+            body: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                    '<label class="matn-field"><span>الاسم</span><input class="matn-input" id="amName" type="text" placeholder="الاسم الكامل"></label>' +
+                    '<label class="matn-field"><span>اسم المستخدم</span><input class="matn-input" id="amUser" type="text" placeholder="حروف وأرقام، 3–24"></label>' +
+                    '<label class="matn-field"><span>كلمة المرور</span><input class="matn-input" id="amPass" type="text" placeholder="6 أحرف على الأقل"></label>' +
+                    '<label class="matn-field"><span>الرصيد الابتدائي</span><input class="matn-input" id="amPoints" type="number" step="1" value="0"></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>الصلاحية المبدئية</span><select class="matn-input" id="amRole"><option value="member">عضو (بلا صلاحيات إدارية)</option><option value="manager">مدير (كل الصلاحيات)</option><option value="custom">تخصيص لاحقاً</option></select></label>' +
+                  '</div><p class="text-[11px] text-matn-muted mt-2 leading-relaxed">يمكنك تغيير الصلاحيات بعد الإنشاء من قائمة الأعضاء.</p><p id="amMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="amGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إنشاء الحساب</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#amGo').addEventListener('click', function () {
+                    var m = w.querySelector('#amMsg');
+                    var uname = normalizeUser(w.querySelector('#amUser').value);
+                    var name = w.querySelector('#amName').value.trim();
+                    var pass = w.querySelector('#amPass').value;
+                    var role = w.querySelector('#amRole').value;
+                    var pts = parseInt(w.querySelector('#amPoints').value, 10) || 0;
+                    if (!uname) { m.textContent = 'اسم المستخدم يجب أن يكون 3–24 حرفاً (حروف وأرقام ونقطة أو شرطة).'; m.className = 'text-xs text-red-700'; return; }
+                    if (!pass || String(pass).length < 6) { m.textContent = 'كلمة المرور 6 أحرف على الأقل.'; m.className = 'text-xs text-red-700'; return; }
+                    var d = migrateAll(doc());
+                    if (d.accounts[uname]) { m.textContent = 'اسم المستخدم محجوز — اختر غيره.'; m.className = 'text-xs text-red-700'; return; }
+                    sha256(String(pass)).then(function (hash) {
+                        var perms = role === 'manager' ? ALL_PERMS.slice() : [];
+                        d.accounts[uname] = {
+                            name: name || uname, hash: hash,
+                            points: Math.max(0, pts),
+                            ledger: [{ reason: 'حساب أُنشئ من لوحة التحكم', points: Math.max(0, pts), at: new Date().toISOString() }],
+                            vouchers: [], booking: null,
+                            isAdmin: perms.length > 0, super: false, perms: perms,
+                            createdAt: new Date().toISOString()
+                        };
+                        saveDoc(d); closeModal(); refresh();
+                        toast('أُنشئ حساب «' + (name || uname) + '»', 'ok');
+                    });
+                });
+            }
+        });
+    }
+
+    function togglePerm(uname, perm) {
+        if (!needPerm('members', 'إدارة الصلاحيات')) return;
+        var d = migrateAll(doc());
+        var a = d.accounts[uname];
+        if (!a) return;
+        if (a.super) { toast('المشرف العام يملك كل الصلاحيات دائماً.', 'error'); return; }
+        var i = a.perms.indexOf(perm);
+        if (i === -1) a.perms.push(perm); else a.perms.splice(i, 1);
+        a.isAdmin = a.perms.length > 0;
+        saveDoc(d); refresh();
+        toast((i === -1 ? 'مُنحت صلاحية «' : 'سُحبت صلاحية «') + permLabel(perm) + '»', 'ok');
+    }
+
+    function setAllPerms(uname, on) {
+        if (!needPerm('members', 'إدارة الصلاحيات')) return;
+        var d = migrateAll(doc());
+        var a = d.accounts[uname];
+        if (!a) return;
+        if (a.super) { toast('المشرف العام يملك كل الصلاحيات دائماً.', 'error'); return; }
+        a.perms = on ? ALL_PERMS.slice() : [];
+        a.isAdmin = a.perms.length > 0;
+        saveDoc(d); refresh();
+        toast(on ? 'صار مديراً بكل الصلاحيات' : 'سُحبت كل الصلاحيات', 'ok');
     }
 
     function grantPoints(uname) {
-        if (!adminOnly('لوحة الإشراف')) return;
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
         var d = doc();
         var a = d.accounts[uname];
         if (!a) return;
@@ -408,7 +622,7 @@
     }
 
     function toggleAdmin(uname) {
-        if (!adminOnly('لوحة الإشراف')) return;
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
         var d = doc();
         var a = d.accounts[uname];
         if (!a) return;
@@ -546,8 +760,10 @@
         var code = 'MA-' + rnd(6);
         var salon = load().salon || {};
         change(function (st) {
-            st.seatsLeft = Math.max(0, st.seatsLeft - 1);
-            st.booking = { code: code, at: new Date().toISOString(), title: salon.title, when: salon.when, where: salon.where };
+            st.booking = {
+                code: code, at: new Date().toISOString(), salonId: salon.id,
+                title: salon.title, when: salon.when, where: salon.where
+            };
         });
         toast('تم تأكيد حجزك — رقم التذكرة ' + code, 'ok');
     }
@@ -559,10 +775,7 @@
         }
         var s = load();
         if (!s.booking) return;
-        change(function (st) {
-            st.seatsLeft = Math.min(SESSION.seats, st.seatsLeft + 1);
-            st.booking = null;
-        });
+        change(function (st) { st.booking = null; });
         toast('تم إلغاء الحجز وإعادة المقعد', 'info');
     }
 
@@ -657,8 +870,7 @@
 
     /* لوحة الإشراف — إضافة شريك */
     function openAddPartner() {
-        if (needsLogin()) { requireLogin('لوحة الإشراف'); return; }
-        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return; }
+        if (!needPerm('partners', 'إدارة الشركاء')) return;
         var opts = CATEGORIES.map(function (c, i) { return '<option value="' + i + '">' + esc(c.label) + '</option>'; }).join('');
         modal({
             title: 'إضافة شريك',
@@ -700,8 +912,7 @@
 
     /* لوحة الإشراف — توليد قسيمة شحن */
     function openGenCode() {
-        if (needsLogin()) { requireLogin('لوحة الإشراف'); return; }
-        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return; }
+        if (!needPerm('codes', 'قسائم الشحن')) return;
         modal({
             title: 'توليد قسيمة شحن',
             body:
@@ -736,8 +947,7 @@
 
     /* لوحة الإشراف — حفظ التسجيل المرئي */
     function saveRecording() {
-        if (needsLogin()) { requireLogin('لوحة الإشراف'); return; }
-        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return; }
+        if (!needPerm('recording', 'التسجيل المرئي')) return;
         var t = document.getElementById('recTitle');
         var u = document.getElementById('recUrl');
         var msg = document.getElementById('recMsg');
@@ -971,18 +1181,37 @@
             if (ml) {
                 ml.innerHTML = users.length ? users.map(function (u) {
                     var a = D.accounts[u];
+                    var role = a.super ? 'المشرف العام' : ((a.perms && a.perms.length) ? 'مدير' : 'عضو');
+                    var roleCls = a.super ? 'bg-matn-gold/25 text-matn-emerald' : ((a.perms && a.perms.length) ? 'bg-emerald-100 text-emerald-800' : 'bg-matn-creamDark text-matn-muted');
                     return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
                         '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
-                        (a.super ? ' <span class="bg-matn-gold/25 text-matn-emerald text-[10px] font-bold px-1.5 py-0.5 rounded">المشرف العام</span>' : (a.isAdmin ? ' <span class="bg-matn-gold/20 text-matn-emerald text-[10px] font-bold px-1.5 py-0.5 rounded">مشرف</span>' : '')) + '</span>' +
+                        ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ' + roleCls + '">' + role + '</span></span>' +
                         '<span class="flex flex-wrap items-center gap-3">' +
                             '<span class="font-bold text-matn-emerald">' + num(a.points) + ' نقطة</span>' +
                             '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح / خصم</button>' +
-                            (a.super ? '' : '<button type="button" data-tgadmin="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">' + (a.isAdmin ? 'إزالة الإشراف' : 'ترقية لمشرف') + '</button>') +
                             (a.booking ? '<button type="button" data-cxl="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">إلغاء الحجز</button>' : '') +
                             '<button type="button" data-rp="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">كلمة مرور</button>' +
                             (a.super ? '' : '<button type="button" data-del="' + esc(u) + '" class="text-red-700 font-bold hover:underline">حذف</button>') +
-                        '</span></li>';
+                        '</span>' +
+                        '<div class="w-full flex flex-wrap items-center gap-2 mt-2">' +
+                            (a.super
+                                ? '<span class="text-[11px] text-matn-muted">كل الصلاحيات — لا تُسحب من المشرف العام.</span>'
+                                : PERMS.map(function (p) {
+                                    var on = (a.perms || []).indexOf(p.key) !== -1;
+                                    return '<button type="button" data-perm="' + esc(p.key) + '" data-uname="' + esc(u) + '" class="px-2 py-1 rounded-lg border text-[11px] font-bold transition ' +
+                                        (on ? 'bg-matn-emerald text-white border-matn-emerald' : 'bg-white text-matn-muted border-matn-sand hover:border-matn-gold') + '">' +
+                                        (on ? '✓ ' : '+ ') + p.label + '</button>';
+                                }).join('') +
+                                ' <button type="button" data-allperm="1" data-uname="' + esc(u) + '" class="px-2 py-1 rounded-lg border border-matn-gold text-matn-emerald text-[11px] font-bold transition">جعله مديراً</button>' +
+                                '<button type="button" data-allperm="0" data-uname="' + esc(u) + '" class="px-2 py-1 rounded-lg border border-matn-sand text-red-700 text-[11px] font-bold transition">سحب الكل</button>') +
+                        '</div></li>';
                 }).join('') : '<li class="text-matn-muted py-2">لا يوجد أعضاء مسجّلون بعد.</li>';
+                ml.querySelectorAll('[data-perm]').forEach(function (b) {
+                    b.addEventListener('click', function () { togglePerm(b.getAttribute('data-uname'), b.getAttribute('data-perm')); });
+                });
+                ml.querySelectorAll('[data-allperm]').forEach(function (b) {
+                    b.addEventListener('click', function () { setAllPerms(b.getAttribute('data-uname'), b.getAttribute('data-allperm') === '1'); });
+                });
                 ml.querySelectorAll('[data-grant]').forEach(function (b) {
                     b.addEventListener('click', function () { grantPoints(b.getAttribute('data-grant')); });
                 });
@@ -1040,20 +1269,19 @@
             var feats = document.getElementById('adminFeatures');
             if (feats) {
                 var list = [
-                    ['الجلسة القادمة', 'العنوان والموعد والميسّر والمكان وعدد المقاعد', 'sec-session'],
-                    ['الأعضاء', 'منح وخصم النقاط · الإشراف · كلمة مرور جديدة · حذف العضو', 'sec-members'],
-                    ['الحجوزات', 'كل حجز باسم صاحبه ورقم تذكرته وتاريخه', 'sec-bookings'],
-                    ['الشركاء', 'إضافة شريك أو حذفه من دليل الشركاء', 'sec-partners'],
-                    ['قسائم الشحن', 'توليد قسيمة شحن ونشرها للأعضاء', 'sec-codes'],
-                    ['التسجيل المرئي', 'عنوان التسجيل ورابط ملف الفيديو', 'sec-recording'],
-                    ['موقع الفرع', 'الخريطة ورابط الفتح في خرائط Google', 'sec-map']
+                    ['الصالونات', 'إضافة صالون · تعديله · حذفه · تعيين الجلسة القادمة', 'sec-salons', 'salons'],
+                    ['الأعضاء', 'إضافة عضو · منح وسحب الصلاحيات · نقاط · كلمة مرور · حذف', 'sec-members', 'members'],
+                    ['الحجوزات', 'كل حجز باسم صاحبه ورقم تذكرته وتاريخه', 'sec-bookings', 'bookings'],
+                    ['الشركاء', 'إضافة شريك أو حذفه من دليل الشركاء', 'sec-partners', 'partners'],
+                    ['قسائم الشحن', 'توليد قسيمة شحن ونشرها للأعضاء', 'sec-codes', 'codes'],
+                    ['التسجيل المرئي', 'عنوان التسجيل ورابط ملف الفيديو', 'sec-recording', 'recording']
                 ];
-                feats.innerHTML = list.map(function (f) {
+                feats.innerHTML = list.filter(function (f) { return can(f[3]); }).map(function (f) {
                     return '<a href="#' + f[2] + '" class="block bg-matn-cream border border-matn-sand rounded-2xl p-4 hover:border-matn-gold transition">' +
                         '<div class="font-bold text-sm text-matn-emerald">' + f[0] +
                             ' <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">متاح ✓</span></div>' +
                         '<div class="text-[11px] text-matn-muted mt-1 leading-relaxed">' + f[1] + '</div></a>';
-                }).join('');
+                }).join('') || '<p class="text-xs text-matn-muted">لا تملك أي صلاحيات إدارية — اطلبها من المشرف العام.</p>';
             }
         }
 
@@ -1097,6 +1325,48 @@
             var h1 = document.getElementById('recHeading');
             if (h1 && s.recording.title) h1.textContent = s.recording.title;
         }
+
+        /* الصالونات */
+        renderSalons(s);
+
+        /* إظهار الأقسام حسب صلاحيات المستخدم — بعد منطق البوابة ليكون هو الفصل */
+        document.querySelectorAll('[data-need-perm]').forEach(function (el) {
+            el.classList.toggle('hidden', !can(el.getAttribute('data-need-perm')));
+        });
+    }
+
+    /* قائمة الصالونات في اللوحة */
+    function renderSalons(s) {
+        var sl = document.getElementById('adminSalonList');
+        if (!sl) return;
+        var d = doc();
+        var list = s.salons || [];
+        sl.innerHTML = list.length ? list.map(function (x) {
+            var tk = takenOf(d, x.id);
+            return '<li class="border border-matn-sand rounded-2xl p-4 ' + (x.featured ? 'bg-matn-creamDark' : 'bg-white') + '">' +
+                '<div class="flex flex-wrap items-start justify-between gap-3">' +
+                    '<div class="min-w-0">' +
+                        '<div class="font-bold text-sm">' + esc(x.title) +
+                            (x.featured ? ' <span class="text-[10px] font-bold bg-matn-gold/25 text-matn-emerald px-1.5 py-0.5 rounded">الجلسة القادمة</span>' : '') + '</div>' +
+                        '<div class="text-[11px] text-matn-muted mt-1">' + esc(x.when || '—') + ' • ' + esc(x.where || '—') + '</div>' +
+                        '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
+                    '</div>' +
+                    '<div class="flex flex-wrap items-center gap-3 text-xs">' +
+                        '<button type="button" data-salon-edit="' + esc(x.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
+                        (x.featured ? '' : '<button type="button" data-salon-feature="' + esc(x.id) + '" class="text-matn-muted font-bold hover:underline">تعيين كقادم</button>') +
+                        '<button type="button" data-salon-del="' + esc(x.id) + '" class="text-red-700 font-bold hover:underline">حذف</button>' +
+                    '</div>' +
+                '</div></li>';
+        }).join('') : '<li class="text-matn-muted py-2">لا توجد صالونات.</li>';
+        sl.querySelectorAll('[data-salon-edit]').forEach(function (b) {
+            b.addEventListener('click', function () { salonForm(b.getAttribute('data-salon-edit')); });
+        });
+        sl.querySelectorAll('[data-salon-feature]').forEach(function (b) {
+            b.addEventListener('click', function () { setFeaturedSalon(b.getAttribute('data-salon-feature')); });
+        });
+        sl.querySelectorAll('[data-salon-del]').forEach(function (b) {
+            b.addEventListener('click', function () { deleteSalon(b.getAttribute('data-salon-del')); });
+        });
     }
 
     function removePartner(id) {
@@ -1137,7 +1407,8 @@
         else if (a === 'generate-code') openGenCode();
         else if (a === 'play-recording') playRecording();
         else if (a === 'save-recording') saveRecording();
-        else if (a === 'save-session') saveSalon();
+        else if (a === 'add-salon') salonForm(null);
+        else if (a === 'add-member') addMemberForm();
         else if (a === 'claim-admin') claimSuperAdmin();
         else if (a === 'signout') standaloneSignOut();
     });
