@@ -221,6 +221,23 @@
         saveDoc(d); state = null; render();
         toast('حُفظت بيانات التحويل البنكي', 'ok');
     }
+    function saveBadWords() {
+        if (!needPerm('engage', 'النقاش والتصويت')) return;
+        var el = document.getElementById('badWordsList');
+        if (!el) return;
+        var d = fullDoc();
+        d.badWords = el.value.split(/[,\n،]+/).map(function (w) { return w.trim(); }).filter(Boolean);
+        saveDoc(d); state = null; render();
+        toast('حُفظت قائمة الكلمات الممنوعة (' + num(d.badWords.length) + ')', 'ok');
+    }
+    function renderBadWords(s) {
+        var el = document.getElementById('badWordsList');
+        if (!el) return;
+        if (document.activeElement === el) return;
+        el.value = badWords(fullDoc()).join('، ');
+        var c = document.getElementById('badWordsCount');
+        if (c) c.textContent = num(badWords(fullDoc()).length) + ' كلمة ممنوعة';
+    }
     function renderAdminPay(s) {
         var box = document.getElementById('paySettings');
         if (!box) return;
@@ -323,6 +340,140 @@
                 });
             }
         });
+    }
+    /* 🛒 شراء الكتاب — تحويل بنكي + إيصال (طلب يُراجعه المشرف) */
+    function bookPrice() { return Math.max(0, parseInt((fullDoc().book || {}).price, 10) || 0); }
+    function orderModal(kind, refId, title, price) {
+        var d = fullDoc();
+        var p = payInfo(d);
+        if (!payReady(d)) { toast('لم تُضف الإدارة بيانات التحويل البنكي بعد.', 'error'); return; }
+        var pic = '';
+        modal({
+            title: 'شراء: ' + title,
+            body: '<div class="bg-matn-cream border border-matn-sand rounded-2xl p-3 space-y-2 text-xs">' +
+                    '<div class="font-bold text-matn-emerald text-sm">💳 المطلوب: ' + arPrice(price) + '</div>' +
+                    (p.bank ? '<div>البنك: <strong>' + esc(p.bank) + '</strong></div>' : '') +
+                    (p.holder ? '<div>المستفيد: <strong>' + esc(p.holder) + '</strong></div>' : '') +
+                    (p.iban ? '<div class="flex flex-wrap items-center gap-2">الآيبان: <strong class="matn-code" dir="ltr">' + esc(p.iban) + '</strong><button type="button" data-action="copy" data-copy="' + esc(p.iban) + '" class="text-[10px] font-bold text-matn-emerald border border-matn-sand rounded-lg px-2 py-0.5">نسخ</button></div>' : '') +
+                    (p.account ? '<div class="flex flex-wrap items-center gap-2">رقم الحساب: <strong class="matn-code" dir="ltr">' + esc(p.account) + '</strong><button type="button" data-action="copy" data-copy="' + esc(p.account) + '" class="text-[10px] font-bold text-matn-emerald border border-matn-sand rounded-lg px-2 py-0.5">نسخ</button></div>' : '') +
+                    (p.note ? '<div class="text-[11px] text-matn-muted whitespace-pre-line">' + esc(p.note) + '</div>' : '') +
+                    '<div class="text-[10px] text-matn-muted">حوّل المبلغ ثم ارفع صورة الإيصال — يتأكد الطلب بعد مراجعة الإدارة.</div>' +
+                '</div>' +
+                '<label class="matn-field"><span>رقم العملية / اسم المُحوِّل (اختياري)</span><input class="matn-input" id="orRef" type="text" placeholder="مثال: 123456789"></label>' +
+                '<input type="file" id="orFile" accept="image/*" class="hidden">' +
+                '<div class="flex flex-wrap items-center gap-3">' +
+                    '<button type="button" id="orPick" class="matn-preset">📎 اختر صورة الإيصال</button>' +
+                    '<img id="orPrev" alt="" class="hidden w-20 h-20 rounded-xl object-cover border border-matn-sand">' +
+                '</div><p id="orMsg" class="text-xs mt-1"></p>',
+            footer: '<button type="button" id="orGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">أرسل الطلب</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                var msg = w.querySelector('#orMsg');
+                var prev = w.querySelector('#orPrev');
+                w.querySelector('#orPick').addEventListener('click', function () { w.querySelector('#orFile').click(); });
+                w.querySelector('#orFile').addEventListener('change', function (ev) {
+                    var f = ev.target.files && ev.target.files[0];
+                    if (!f) return;
+                    msg.textContent = 'جارٍ تجهيز الإيصال…'; msg.className = 'text-xs mt-1 text-matn-muted';
+                    compressImage(f, 900, 0.7).then(function (url) {
+                        pic = url; prev.src = url; prev.classList.remove('hidden');
+                        msg.textContent = 'جهّزنا الإيصال.'; msg.className = 'text-xs mt-1 text-emerald-700';
+                    }).catch(function () { msg.textContent = 'تعذّر قراءة الصورة.'; msg.className = 'text-xs mt-1 text-red-700'; });
+                });
+                w.querySelectorAll('[data-action="copy"]').forEach(function (b) {
+                    b.addEventListener('click', function () { copyToClipboard(b.getAttribute('data-copy')); });
+                });
+                w.querySelector('#orGo').addEventListener('click', function () {
+                    if (!pic) { msg.textContent = 'ارفع صورة الإيصال أولاً.'; msg.className = 'text-xs mt-1 text-red-700'; return; }
+                    var ref = w.querySelector('#orRef').value.trim();
+                    var d2 = fullDoc();
+                    d2.orders = d2.orders || [];
+                    d2.orders.unshift({
+                        id: 'or-' + rnd(6), kind: kind, refId: refId, title: title, amount: price,
+                        receipt: pic, ref: ref, user: d2.authUser,
+                        name: (d2.accounts[d2.authUser] || {}).name || d2.authUser,
+                        at: new Date().toISOString(), status: 'pending'
+                    });
+                    var targets = adminsOf(d2, d2.authUser);
+                    var txt = '🛒 طلب شراء جديد\n' + title + '\nالمبلغ: ' + arPrice(price) +
+                        '\nالطالب: ' + ((d2.accounts[d2.authUser] || {}).name || d2.authUser) +
+                        (ref ? ('\nرقم العملية: ' + ref) : '') + '\nراجعه من: لوحة الإدارة ← بوابة الدفع';
+                    var at = new Date().toISOString();
+                    targets.forEach(function (t) {
+                        d2.notices.unshift({ id: 'nt-' + rnd(6), to: t, text: txt, kind: 'order', from: d2.authUser, at: at, read: false });
+                        d2.messages.unshift({ id: 'ms-' + rnd(6), from: d2.authUser, to: t, text: txt, at: at, read: false, system: true });
+                    });
+                    saveDoc(d2); state = null; closeModal(); load(); render();
+                    toast('أُرسل طلبك — بانتظار تأكيد الإدارة', 'ok');
+                });
+            }
+        });
+    }
+    /* قائمة التصويتات في اللوحة */
+    function renderAdminPolls(s) {
+        var box = document.getElementById('adminPollList');
+        if (!box) return;
+        var list = pollsOf(fullDoc());
+        box.innerHTML = list.length ? list.map(function (p) {
+            var total = Object.keys(p.votes || {}).length;
+            return '<li class="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-matn-sand/60 text-xs">' +
+                '<span class="min-w-0"><strong>' + esc(clip(p.question, 55)) + '</strong>' +
+                    '<span class="block text-[10px] text-matn-muted">' + pollStateLabel(p) +
+                    (pollWhenLabel(p) ? (' · ' + esc(pollWhenLabel(p))) : '') + ' · ' + num(total) + ' صوت</span></span>' +
+                '<span class="flex items-center gap-3 shrink-0">' +
+                    '<button type="button" data-action="edit-poll-id" data-pid="' + esc(p.id) + '" class="text-matn-emerald font-bold hover:underline">✏️ تعديل</button>' +
+                    '<button type="button" data-action="del-poll" data-pid="' + esc(p.id) + '" class="text-red-700 font-bold hover:underline">حذف</button>' +
+                '</span></li>';
+        }).join('') : '<li class="text-xs text-matn-muted py-2">لا تصويتات بعد — اضغط «+ تصويت جديد».</li>';
+    }
+    function deletePoll(id) {
+        if (!needPerm('engage', 'التصويت')) return;
+        confirmBox('حذف التصويت', 'سيُحذف التصويت وأصواته وتعليقاته. لا يمكن التراجع.', function () {
+            var d = fullDoc();
+            d.polls = (d.polls || []).filter(function (x) { return x.id !== id; });
+            d.posts = (d.posts || []).filter(function (x) { return x.topic !== pollCommentTopic(id); });
+            d.poll = activePoll(d) || (d.polls[0] || null);
+            saveDoc(d); state = null; load(); render();
+            toast('حُذف التصويت', 'ok');
+        }, 'حذف');
+    }
+    function reviewOrder(id, ok) {
+        if (!needPerm('bookings', 'الحجوزات')) return;
+        var d = fullDoc();
+        var o = (d.orders || []).filter(function (x) { return x.id === id; })[0];
+        if (!o) return;
+        confirmBox(ok ? 'تأكيد الطلب' : 'رفض الطلب', ok
+            ? ('سيُؤكَّد طلب «' + o.name + '» — ' + o.title + ' (' + arPrice(o.amount) + ').')
+            : ('سيُرفض طلب «' + o.name + '».'), function () {
+            var d2 = fullDoc();
+            var o2 = (d2.orders || []).filter(function (x) { return x.id === id; })[0];
+            if (!o2) return;
+            o2.status = ok ? 'confirmed' : 'rejected';
+            o2.reviewedAt = new Date().toISOString();
+            var txt = (ok ? '✅ تأكيد طلبك: ' : '✗ رُفض طلبك: ') + o2.title + ' — تابع مع الإدارة للاستلام.';
+            d2.notices.unshift({ id: 'nt-' + rnd(6), to: o2.user, text: txt, kind: 'order', from: d2.authUser, at: new Date().toISOString(), read: false });
+            d2.messages.unshift({ id: 'ms-' + rnd(6), from: d2.authUser, to: o2.user, text: txt, at: new Date().toISOString(), read: false, system: true });
+            saveDoc(d2); state = null; load(); render();
+            toast(ok ? 'تأكّد الطلب' : 'رُفض الطلب', 'ok');
+        }, ok ? 'تأكيد' : 'رفض');
+    }
+    function renderAdminOrders(s) {
+        var box = document.getElementById('adminOrderList');
+        if (!box) return;
+        var list = (fullDoc().orders || []).slice(0, 30);
+        box.innerHTML = list.length ? list.map(function (o) {
+            var st = o.status === 'confirmed' ? '<span class="text-emerald-700 font-bold">✓ مؤكَّد</span>'
+                : o.status === 'rejected' ? '<span class="text-red-700 font-bold">✗ مرفوض</span>'
+                : '<span class="text-amber-700 font-bold">⏳ جديد</span>';
+            return '<li class="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-matn-sand/60 text-xs">' +
+                '<span class="min-w-0"><strong>' + esc(o.name) + '</strong> <span class="text-matn-muted">@' + esc(o.user) + '</span>' +
+                    '<span class="block text-[10px] text-matn-muted">' + esc(clip(o.title, 40)) + ' · ' + esc(fmtDate(o.at)) + (o.ref ? (' · عملية: ' + esc(clip(o.ref, 14))) : '') + '</span></span>' +
+                '<span class="flex flex-wrap items-center gap-2 shrink-0">' +
+                    '<span class="font-bold text-matn-emerald">' + arPrice(o.amount) + '</span>' + st +
+                    (o.receipt ? '<img src="' + esc(safeImg(o.receipt)) + '" data-zoom="' + esc(safeImg(o.receipt)) + '" class="w-10 h-10 rounded-lg object-cover border border-matn-sand" alt="إيصال">' : '') +
+                    (o.status === 'pending' ? ('<button type="button" data-action="order-ok" data-oid="' + esc(o.id) + '" class="bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-bold">✅ تأكيد</button>' +
+                        '<button type="button" data-action="order-no" data-oid="' + esc(o.id) + '" class="bg-white border border-red-200 text-red-700 px-2.5 py-1.5 rounded-lg font-bold">✗ رفض</button>') : '') +
+                '</span></li>';
+        }).join('') : '<li class="text-xs text-matn-muted py-2">لا طلبات شراء.</li>';
     }
     function reviewPayment(uname, sid, ok) {
         if (!needPerm('bookings', 'الحجوزات')) return;
@@ -663,6 +814,7 @@
         if (typeof d.poll === 'undefined') { d.poll = null; dirty = true; }
         if (!Array.isArray(d.messages)) { d.messages = []; dirty = true; }
         if (!Array.isArray(d.notices)) { d.notices = []; dirty = true; }
+        if (!Array.isArray(d.polls)) { d.polls = d.poll && d.poll.question ? [d.poll] : []; dirty = true; }
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
             if (typeof a.avatar !== 'string') { a.avatar = ''; dirty = true; }
@@ -712,7 +864,8 @@
             branches: d.branches || [],
             book: d.book || { title: '', author: '', cover: '', desc: '', url: '' },
             posts: d.posts || [],
-            poll: d.poll || null,
+            poll: activePoll(d),
+            polls: pollsOf(d),
             messages: d.messages || [],
             notices: d.authUser ? (d.notices || []).filter(function (n) { return n.to === d.authUser; }) : [],
             accounts: d.accounts || {},
@@ -1299,8 +1452,12 @@
                             return '<option value="' + mm + '"' + ((v.durationMin || 90) === mm ? ' selected' : '') + '>' + durLabel(mm) + '</option>';
                         }).join('') +
                     '</select></label>' +
-                    '<label class="matn-field"><span>💳 سعر الاشتراك (ر.س) — اكتب 0 لجلسة مجانية</span><input class="matn-input" id="sfPrice" type="number" min="0" step="1" value="' + (salonPrice(v) || 0) + '"></label>' +
-                    '<p class="text-[10px] text-matn-muted sm:col-span-2 -mt-1">إذا كان السعر أكبر من صفر: العضو يحوّل المبلغ بنكياً ويرفع الإيصال، ويتفعّل اشتراكه بعد تأكيدك من قسم «الحجوزات».</p>' +
+                    '<label class="matn-field sm:col-span-2"><span>🎟 نوع المشاركة في الجلسة</span><select class="matn-input" id="sfPaid">' +
+                        '<option value="free"' + (salonPrice(v) ? '' : ' selected') + '>🎁 مجاني — بلا رسوم (حجز مباشر)</option>' +
+                        '<option value="paid"' + (salonPrice(v) ? ' selected' : '') + '>💳 باشتراك مدفوع (تحويل بنكي + إيصال)</option>' +
+                    '</select></label>' +
+                    '<label class="matn-field" id="sfPriceWrap"><span>💳 سعر الاشتراك (ر.س)</span><input class="matn-input" id="sfPrice" type="number" min="0" step="1" value="' + (salonPrice(v) || 0) + '"></label>' +
+                    '<p class="text-[10px] text-matn-muted sm:col-span-2 -mt-1">«مجاني» = حجز مباشر بلا رسوم. «مدفوع» = يحوّل العضو المبلغ بنكياً ويرفع الإيصال، ويتفعّل اشتراكه بعد تأكيدك من «الحجوزات». والجلسات المدفوعة للأعضاء والمشتركين.</p>' +
                     '<label class="matn-field"><span>🏙 المدينة</span><select class="matn-input" id="sfCity">' + citiesOptions(v.city) + '</select></label>' +
                     '<label class="matn-field"><span>📍 مكانه (الفرع) — حضوري أو كليهما</span><select class="matn-input" id="sfBranch">' +
                         '<option value="">بدون فرع محدد</option>' +
@@ -1363,6 +1520,16 @@
                     var b0 = nd0.branches.filter(function (x) { return x.id === brSel.value; })[0];
                     if (b0 && b0.city) citySel.value = b0.city;
                 });
+                var _pf0 = w.querySelector('#sfPaid');
+                if (_pf0) {
+                    var _sync0 = function () {
+                        var isFree = _pf0.value === 'free';
+                        var wrap0 = w.querySelector('#sfPriceWrap');
+                        if (wrap0) wrap0.classList.toggle('hidden', isFree);
+                        if (isFree && w.querySelector('#sfPrice')) w.querySelector('#sfPrice').value = '0';
+                    };
+                    _pf0.addEventListener('change', _sync0); _sync0();
+                }
                 var prev = w.querySelector('#sfPrev');
                 var showPrev = function (url) {
                     if (url) { prev.src = url; prev.classList.remove('hidden'); }
@@ -1440,7 +1607,12 @@
                         durationMin: parseInt(w.querySelector('#sfDur').value, 10) || 90,
                         city: (citySel ? citySel.value : '') || '',
                         branchId: (brSel ? brSel.value : '') || '',
-                        reminderMin: parseInt(w.querySelector('#sfRemind').value, 10) || 60
+                        reminderMin: parseInt(w.querySelector('#sfRemind').value, 10) || 60,
+                        price: (function () {
+                            var pf = w.querySelector('#sfPaid');
+                            if (pf && pf.value === 'free') return 0;
+                            return Math.max(0, parseInt((w.querySelector('#sfPrice') || {}).value, 10) || 0);
+                        })()
                     };
                     if (isNew) {
                         data.id = newSalonId(doc2);
@@ -1449,7 +1621,7 @@
                         doc2.salons.push(data);
                     } else {
                         var t2 = salonById(doc2, id);
-                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; t2.durationMin = data.durationMin; t2.city = data.city; t2.branchId = data.branchId; t2.venue = data.venue; t2.venueKind = data.venueKind; t2.venueLink = data.venueLink; }
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; t2.durationMin = data.durationMin; t2.city = data.city; t2.branchId = data.branchId; t2.venue = data.venue; t2.venueKind = data.venueKind; t2.venueLink = data.venueLink; t2.price = data.price; }
                     }
                     saveDoc(doc2);
                     closeModal(); refresh();
@@ -2593,6 +2765,11 @@
         renderHomePartners(s);
         renderBookPage(s);
         renderAdminPay(s);
+        renderAdminOrders(s);
+        renderAdminPolls(s);
+        renderPollsPage(s);
+        renderHomePoll(s);
+        renderBadWords(s);
         renderMyDiary(s);
         renderDiaryWall(s);
         renderBell(s);
@@ -2666,6 +2843,12 @@
                     (b.author ? '<div class="text-xs text-matn-gold mt-1">✍ ' + esc(b.author) + '</div>' : '') +
                     (b.desc ? '<p class="text-xs text-matn-muted leading-relaxed mt-2 whitespace-pre-line">' + esc(b.desc) + '</p>' : '') +
                     (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-3 text-xs font-bold text-matn-emerald border border-matn-sand rounded-xl px-4 py-2 hover:border-matn-gold transition">تفاصيل الكتاب ↗</a>' : '') +
+                    '<div class="mt-3 flex flex-wrap items-center gap-2 text-[11px]">' +
+                        (Math.max(0, parseInt(b.price, 10) || 0) > 0
+                            ? ('<span class="font-bold text-matn-emerald bg-matn-gold/15 border border-matn-gold/40 rounded-xl px-3 py-1.5">🛒 الكتاب للبيع: ' + arPrice(Math.max(0, parseInt(b.price, 10) || 0)) + ' — للأعضاء والمشتركين</span>' +
+                               '<button type="button" data-action="buy-book" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2 rounded-xl font-bold shadow transition">اشترِ النسخة</button>')
+                            : '<span class="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5">🎁 كتاب الأسبوع مجاني للأعضاء</span>') +
+                    '</div>' +
                 '</div></div>';
     }
 
@@ -2755,6 +2938,7 @@
         var el = document.getElementById(taId);
         var text = el ? el.value.trim() : '';
         if (!text) { toast('اكتب رأيك أولاً.', 'error'); return; }
+        if (!guardText(text, 'عدّل مشاركتك')) return;
         var d = fullDoc();
         var u = d.authUser;
         var acc = d.accounts[u] || {};
@@ -3013,6 +3197,8 @@
                     '<label class="matn-field sm:col-span-2"><span>عنوان الكتاب</span><input class="matn-input" id="bkWTitle" type="text" value="' + esc(b.title) + '" placeholder="موسم الهجرة إلى الشمال"></label>' +
                     '<label class="matn-field"><span>المؤلف</span><input class="matn-input" id="bkWAuthor" type="text" value="' + esc(b.author) + '" placeholder="الطيب صالح"></label>' +
                     '<label class="matn-field"><span>رابط (اختياري)</span><input class="matn-input" id="bkWUrl" type="url" value="' + esc(b.url || '') + '" placeholder="https://..."></label>' +
+                    '<label class="matn-field"><span>🛒 سعر الكتاب (ر.س) — 0 = مجاني للأعضاء</span><input class="matn-input" id="bkPrice" type="number" min="0" step="1" value="' + Math.max(0, parseInt(b.price, 10) || 0) + '"></label>' +
+                    '<p class="text-[10px] text-matn-muted sm:col-span-2 -mt-1">إن وضعت سعراً يظهر زر «شراء الكتاب» ويؤكده المشرف من «طلبات الشراء». وكتاب الأسبوع للأعضاء والمشتركين.</p>' +
                     '<label class="matn-field sm:col-span-2"><span>نبذة / لماذا اخترناه</span><textarea class="matn-input" id="bkWDesc" rows="3" placeholder="سطران عن الكتاب">' + esc(b.desc) + '</textarea></label>' +
                     '<label class="matn-field sm:col-span-2"><span>🖼 صورة الغلاف</span>' +
                         '<input class="matn-input" id="bkWPoster" type="url" value="' + (b.cover && b.cover.indexOf('data:') !== 0 ? esc(b.cover) : '') + '" placeholder="https://example.com/cover.jpg">' +
@@ -3048,6 +3234,7 @@
                         desc: w.querySelector('#bkWDesc').value.trim(),
                         url: safeUrl(w.querySelector('#bkWUrl').value),
                         cover: cover,
+                        price: Math.max(0, parseInt((w.querySelector('#bkPrice') || {}).value, 10) || 0),
                         at: new Date().toISOString()
                     };
                     saveDoc(nd); closeModal(); refresh();
@@ -3066,6 +3253,7 @@
         var el = document.getElementById('postText');
         var text = el ? el.value.trim() : '';
         if (!text) { toast('اكتب رأيك أولاً.', 'error'); return; }
+        if (!guardText(text, 'عدّل مشاركتك')) return;
         var d = fullDoc();
         var u = d.authUser;
         var acc = d.accounts[u] || {};
@@ -3086,24 +3274,62 @@
         d.posts = d.posts.filter(function (x) { return x.id !== id; });
         saveDoc(d); refresh(); toast('حُذفت المشاركة', 'info');
     }
-    function votePoll(optId) {
+    function votePoll(optId, pollId) {
         if (needsLogin()) { requireLogin('التصويت'); return; }
         var d = fullDoc();
-        if (!d.poll || !d.poll.question) { toast('لا يوجد تصويت حالياً.', 'info'); return; }
-        if (d.poll.open === false) { toast('التصويت مغلق.', 'info'); return; }
-        if (!d.poll.votes) d.poll.votes = {};
-        d.poll.votes[d.authUser] = optId;
-        saveDoc(d); refresh();
+        var p = null;
+        if (pollId) p = pollsOf(d).filter(function (x) { return x.id === pollId; })[0] || null;
+        if (!p) p = activePoll(d) || (d.poll && d.poll.question ? d.poll : null);
+        if (!p) { toast('لا يوجد تصويت حالياً.', 'info'); return; }
+        if (!pollOpenNow(p)) { toast('التصويت مغلق أو لم يبدأ بعد.', 'info'); return; }
+        if (!p.votes) p.votes = {};
+        p.votes[d.authUser] = optId;
+        if (!Array.isArray(d.polls)) d.polls = [];
+        if (p.id && !d.polls.some(function (x) { return x.id === p.id; })) d.polls.push(p);
+        d.poll = activePoll(d) || d.poll;
+        saveDoc(d); state = null; refresh();
         toast('شُجّل تصويتك', 'ok');
     }
-    function pollForm() {
+    /* تعليق على تصويت */
+    function addPollComment(pollId) {
+        if (needsLogin()) { requireLogin('التعليق'); return; }
+        var el = document.getElementById('pcText');
+        var text = el ? el.value.trim() : '';
+        if (!text) { toast('اكتب تعليقك أولاً.', 'error'); return; }
+        if (!guardText(text, 'عدّل تعليقك')) return;
+        var d = fullDoc();
+        var acc = d.accounts[d.authUser] || {};
+        d.posts = d.posts || [];
+        d.posts.unshift({
+            id: 'po-' + rnd(6), topic: pollCommentTopic(pollId), pollId: pollId,
+            user: d.authUser, name: acc.name || d.authUser,
+            text: String(text).slice(0, 1000), at: new Date().toISOString()
+        });
+        saveDoc(d); state = null; refresh();
+        toast('نُشر تعليقك على التصويت', 'ok');
+    }
+    function whenValue(iso) {
+        if (!iso) return '';
+        var dt = new Date(iso);
+        if (isNaN(dt.getTime())) return '';
+        var off = dt.getTimezoneOffset() * 60000;
+        return new Date(dt.getTime() - off).toISOString().slice(0, 16);
+    }
+    function pollForm(editId) {
         if (!needPerm('engage', 'التصويت')) return;
         var d = fullDoc();
-        var p = d.poll || { question: '', options: [{ id: 'o1', text: '' }, { id: 'o2', text: '' }], votes: {}, open: true };
+        var p = null;
+        if (editId) p = pollsOf(d).filter(function (x) { return x.id === editId; })[0] || null;
+        if (!p) p = { question: '', options: [{ id: 'o1', text: '' }, { id: 'o2', text: '' }], votes: {}, open: true, id: 'pl-' + rnd(6), at: new Date().toISOString() };
         modal({
             title: 'تصويت الأسبوع',
             body: '<label class="matn-field"><span>سؤال التصويت</span><input class="matn-input" id="poQ" type="text" value="' + esc(p.question) + '" placeholder="أي كتاب نقرأ الأسبوع القادم؟"></label>' +
                   '<label class="matn-field"><span>الخيارات — كل سطر خيار (حتى 6)</span><textarea class="matn-input" id="poOpts" rows="4" placeholder="الخيار الأول&#10;الخيار الثاني">' + esc((p.options || []).map(function (o) { return o.text; }).join('\n')) + '</textarea></label>' +
+                  '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                    '<label class="matn-field"><span>🕐 يبدأ التصويت (اختياري)</span><input class="matn-input" id="poStart" type="datetime-local" value="' + whenValue(p.startAt) + '"></label>' +
+                    '<label class="matn-field"><span>⏹ ينتهي التصويت (اختياري)</span><input class="matn-input" id="poEnd" type="datetime-local" value="' + whenValue(p.endAt) + '"></label>' +
+                  '</div>' +
+                  '<p class="text-[10px] text-matn-muted -mt-1">بعد انتهاء الوقت يختفي التصويت من الرئيسية ويبقى في صفحة التصويتات.</p>' +
                   '<div class="flex flex-wrap gap-4 text-xs mt-1">' +
                     '<label class="flex items-center gap-2"><input type="checkbox" id="poOpen"' + (p.open === false ? '' : ' checked') + '> التصويت مفتوح</label>' +
                     '<label class="flex items-center gap-2"><input type="checkbox" id="poReset"> تصفير الأصوات</label>' +
@@ -3117,16 +3343,22 @@
                     if (!q) { m.textContent = 'اكتب سؤال التصويت.'; m.className = 'text-xs text-red-700'; return; }
                     if (opts.length < 2) { m.textContent = 'اكتب خيارين على الأقل.'; m.className = 'text-xs text-red-700'; return; }
                     var nd = fullDoc();
-                    var oldVotes = (nd.poll && !w.querySelector('#poReset').checked) ? (nd.poll.votes || {}) : {};
-                    nd.poll = {
-                        question: q,
-                        options: opts.map(function (tx, i) { return { id: 'o' + (i + 1), text: tx }; }),
-                        votes: oldVotes,
-                        open: !!w.querySelector('#poOpen').checked,
-                        at: new Date().toISOString()
-                    };
-                    saveDoc(nd); closeModal(); refresh();
-                    toast('حُفظ التصويت', 'ok');
+                    if (!Array.isArray(nd.polls)) nd.polls = [];
+                    var cur = editId ? nd.polls.filter(function (x) { return x.id === editId; })[0] : null;
+                    var oldVotes = (cur && !w.querySelector('#poReset').checked) ? (cur.votes || {}) : {};
+                    var sEl = w.querySelector('#poStart'), eEl = w.querySelector('#poEnd');
+                    var obj = cur || { id: 'pl-' + rnd(6), at: new Date().toISOString(), votes: {} };
+                    obj.question = q;
+                    obj.options = opts.map(function (tx, i) { return { id: 'o' + (i + 1), text: tx }; });
+                    obj.votes = oldVotes;
+                    obj.open = !!w.querySelector('#poOpen').checked;
+                    obj.startAt = (sEl && sEl.value) ? new Date(sEl.value).toISOString() : '';
+                    obj.endAt = (eEl && eEl.value) ? new Date(eEl.value).toISOString() : '';
+                    if (!obj.at) obj.at = new Date().toISOString();
+                    if (!cur) nd.polls.unshift(obj);
+                    nd.poll = activePoll(nd) || obj;
+                    saveDoc(nd); closeModal(); state = null; refresh();
+                    toast(cur ? 'حُفظ التصويت' : 'أُضيف تصويت جديد', 'ok');
                 });
             }
         });
@@ -3157,6 +3389,159 @@
         if (n === 2) return 'مذكرتان';
         if (n >= 3 && n <= 10) return 'مذكرات';
         return 'مذكرة';
+    }
+    /* ============ فلتر الكلمات المخالفة للذوق العام ============ */
+    var BAD_WORDS_SEED = ['كلب', 'حمار', 'غبي', 'أحمق', 'تافه', 'خرقاء', 'لعنة', 'قذر', 'حقير', 'كريه',
+        'مقرف', 'سخيف', 'بليد', 'حثالة', 'زبالة', 'يلعن', 'قذارة', 'وسخ', 'مجنون', 'أبله', 'فاشل'];
+    function badWords(d) {
+        var list = (d && Array.isArray(d.badWords) && d.badWords.length) ? d.badWords : BAD_WORDS_SEED;
+        return list.map(function (w) { return String(w || '').trim(); }).filter(Boolean);
+    }
+    function findBadWord(text) {
+        var t = String(text || '');
+        if (!t) return null;
+        var words = badWords(fullDoc());
+        for (var i = 0; i < words.length; i++) {
+            if (t.indexOf(words[i]) !== -1) return words[i];
+        }
+        return null;
+    }
+    function guardText(text, what) {
+        var bad = findBadWord(text);
+        if (!bad) return true;
+        toast('🚫 كلمة مخالفة للذوق العام («' + bad + '») — ' + (what || 'عدّل النص') + ' واحترم بقية الأعضاء.', 'error');
+        return false;
+    }
+    /* ============ التصويتات (متعددة + وقت بداية ونهاية) ============ */
+    function pollsOf(d) {
+        var list = (d && Array.isArray(d.polls)) ? d.polls.slice() : [];
+        if (!list.length && d && d.poll && d.poll.question) list = [d.poll];
+        return list.sort(function (a, b) { return new Date(b.at || 0) - new Date(a.at || 0); });
+    }
+    function pollOpenNow(p) {
+        if (!p || !p.question || !(p.options || []).length) return false;
+        if (p.open === false) return false;
+        var now = Date.now();
+        if (p.startAt && now < new Date(p.startAt).getTime()) return false;
+        if (p.endAt && now > new Date(p.endAt).getTime()) return false;
+        return true;
+    }
+    function pollState(p) {
+        if (!p || !p.question) return 'none';
+        var now = Date.now();
+        if (p.startAt && now < new Date(p.startAt).getTime()) return 'soon';
+        if (p.open === false) return 'closed';
+        if (p.endAt && now > new Date(p.endAt).getTime()) return 'ended';
+        return 'live';
+    }
+    function activePoll(d) {
+        var list = pollsOf(d);
+        for (var i = 0; i < list.length; i++) { if (pollOpenNow(list[i])) return list[i]; }
+        return null;
+    }
+    function pollStateLabel(p) {
+        var st = pollState(p);
+        if (st === 'live') return '<span class="text-emerald-700 font-bold">🔴 جارٍ الآن</span>';
+        if (st === 'soon') return '<span class="text-amber-700 font-bold">⏳ لم يبدأ بعد</span>';
+        if (st === 'ended') return '<span class="text-matn-muted font-bold">✓ انتهى</span>';
+        if (st === 'closed') return '<span class="text-matn-muted font-bold">مغلق</span>';
+        return '';
+    }
+    function pollWhenLabel(p) {
+        var out = [];
+        if (p.startAt) out.push('من ' + fmtDateTime(p.startAt));
+        if (p.endAt) out.push('إلى ' + fmtDateTime(p.endAt));
+        return out.join(' · ');
+    }
+    function pollBoxHtml(p, opts) {
+        opts = opts || {};
+        if (!p || !p.question) return '';
+        var votes = p.votes || {};
+        var total = Object.keys(votes).length;
+        var d = fullDoc();
+        var my = d.authUser ? votes[d.authUser] : null;
+        var live = pollOpenNow(p);
+        return '<div class="font-bold text-matn-emerald text-sm">🗳 ' + esc(p.question) + '</div>' +
+            (opts.showState ? ('<div class="text-[10px] mt-1">' + pollStateLabel(p) + (pollWhenLabel(p) ? (' <span class="text-matn-muted">· ' + esc(pollWhenLabel(p)) + '</span>') : '') + '</div>') : '') +
+            '<div class="space-y-2 mt-3">' + (p.options || []).map(function (o) {
+                var n = Object.keys(votes).filter(function (u) { return votes[u] === o.id; }).length;
+                var pct = total ? Math.round(n * 100 / total) : 0;
+                var sel = my === o.id;
+                return '<button type="button" data-vote="' + esc(o.id) + '" data-poll="' + esc(p.id || '') + '"' + (live ? '' : ' disabled') +
+                    ' class="w-full text-right border rounded-xl px-3 py-2 relative overflow-hidden transition ' +
+                    (sel ? 'border-matn-emerald bg-emerald-50' : 'border-matn-sand bg-white') + (live ? ' hover:border-matn-gold' : ' opacity-80') + '">' +
+                    '<span class="absolute inset-y-0 right-0 bg-matn-emerald/10" style="width:' + pct + '%"></span>' +
+                    '<span class="relative flex justify-between gap-2 text-xs font-bold"><span>' + (sel ? '✓ ' : '') + esc(o.text) + '</span>' +
+                    '<span class="text-matn-muted shrink-0">' + num(n) + ' · ' + pct + '%</span></span></button>';
+            }).join('') + '</div>' +
+            '<div class="text-[11px] text-matn-muted mt-2">' + (total ? (num(total) + ' مشاركاً') : 'كن أول من يصوّت') +
+            (!live ? ' · التصويت مغلق' : '') + (opts.showState ? '' : '') + '</div>';
+    }
+    function wireVotes(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-vote]').forEach(function (b) {
+            b.addEventListener('click', function () { votePoll(b.getAttribute('data-vote'), b.getAttribute('data-poll')); });
+        });
+    }
+    /* تعليقات كل تصويت (لا تظهر في الرئيسية) */
+    function pollCommentTopic(id) { return 'poll:' + id; }
+    function pollCommentsBlock(p) {
+        var d = fullDoc();
+        var s = load();
+        var topic = pollCommentTopic(p.id);
+        var items = (s.posts || []).filter(function (x) { return x.topic === topic; });
+        return '<div class="space-y-3">' +
+            '<div class="text-[11px] font-bold text-matn-emerald">💬 تعليقات الأعضاء على التصويت (' + num(items.length) + ')</div>' +
+            (s.signedIn
+                ? ('<div class="space-y-2"><textarea id="pcText" rows="2" class="matn-input" placeholder="تعليقك على هذا التصويت…"></textarea>' +
+                   '<button type="button" data-action="add-poll-comment" data-poll="' + esc(p.id) + '" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2 rounded-xl text-xs font-bold transition">انشر تعليقي</button></div>')
+                : '<p class="text-[11px] text-matn-muted">سجّل الدخول للتعليق.</p>') +
+            '<ul class="text-xs space-y-2">' + (items.length ? items.map(function (x) {
+                var canDel = (s.signedIn && x.user === s.user.username) || can('engage');
+                return '<li class="border border-matn-sand rounded-2xl p-3 bg-white">' +
+                    '<div class="flex items-center justify-between gap-2 text-[11px]">' +
+                        '<button type="button" data-member="' + esc(x.user) + '" class="font-bold text-matn-emerald hover:underline">' + esc(x.name || x.user) + ' ›</button>' +
+                        '<span class="text-matn-muted">' + esc(fmtDate(x.at)) + '</span></div>' +
+                    '<p class="text-xs leading-relaxed mt-1.5 whitespace-pre-line">' + esc(x.text) + '</p>' +
+                    (canDel ? '<button type="button" data-delpost="' + esc(x.id) + '" class="text-[11px] text-red-700 font-bold mt-1.5 hover:underline">حذف</button>' : '') +
+                '</li>';
+            }).join('') : '<li class="text-xs text-matn-muted py-1">لا تعليقات بعد.</li>') + '</ul></div>';
+    }
+    function renderPollsPage(s) {
+        var box = document.getElementById('pollsBox');
+        if (!box) return;
+        var d = fullDoc();
+        var list = pollsOf(d);
+        if (!list.length) {
+            box.innerHTML = '<div class="bg-white rounded-3xl border border-dashed border-matn-sand p-6 text-center text-xs text-matn-muted">لا توجد تصويتات بعد — يضيفها المشرف من لوحة الإدارة.</div>';
+            return;
+        }
+        box.innerHTML = list.map(function (p) {
+            var st = pollState(p);
+            var live = st === 'live';
+            var res = pollBoxHtml(p, { showState: true });
+            return '<section class="bg-matn-cream rounded-3xl border border-matn-sand shadow-sm p-5 space-y-4 ' + (live ? '' : 'opacity-95') + '">' +
+                '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                    '<h2 class="font-amiri text-xl font-bold text-matn-emerald">🗳 ' + esc(p.question) + '</h2>' + pollStateLabel(p) + '</div>' +
+                (pollWhenLabel(p) ? '<p class="text-[11px] text-matn-muted">🕐 ' + esc(pollWhenLabel(p)) + '</p>' : '') +
+                '<div>' + res + '</div>' +
+                pollCommentsBlock(p) +
+            '</section>';
+        }).join('');
+        wireVotes(box);
+        wirePostsBox(box);
+    }
+    /* تصويت الرئيسية: آخر تصويت جارٍ فقط (بلا تعليقات) */
+    function renderHomePoll(s) {
+        var box = document.getElementById('homePollBox');
+        if (!box) return;
+        var d = fullDoc();
+        var p = activePoll(d);
+        if (!p) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+        box.classList.remove('hidden');
+        box.innerHTML = pollBoxHtml(p, { showState: true }) +
+            '<a href="polls.html" class="inline-block mt-3 text-[11px] font-bold text-matn-emerald hover:underline">كل التصويتات والتعليق عليها ›</a>';
+        wireVotes(box);
     }
     function clip(t, n) {
         var x = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
@@ -3630,6 +4015,7 @@
         var t = String(text || '').trim();
         if (t.length < 10) { toast('اكتب مذكرة أطول قليلاً (10 أحرف على الأقل).', 'error'); return false; }
         if (t.length > DIARY_MAX) { toast('المذكرة تتجاوز ' + num(DIARY_MAX) + ' حرف.', 'error'); return false; }
+        if (!guardText(t, 'عدّل مذكرتك')) return false;
         var d = fullDoc();
         var acc = d.accounts[d.authUser];
         if (!acc.diary) acc.diary = [];
@@ -3707,6 +4093,7 @@
         var t = String(text || '').trim();
         if (!t.length) { toast('اكتب نص التعليق.', 'error'); return false; }
         if (t.length > 600) { toast('التعليق طويل — الحد 600 حرف.', 'error'); return false; }
+        if (!guardText(t, 'عدّل تعليقك')) return false;
         var e = findEntry(d, u, eid);
         if (!e) return false;
         if (!Array.isArray(e.comments)) e.comments = [];
@@ -4039,6 +4426,7 @@
         if (!from) { requireLogin('الرسائل'); return false; }
         if (!to || !d.accounts[to]) { toast('اختر عضواً صحيحاً.', 'error'); return false; }
         if (!String(text || '').trim()) { toast('اكتب نص الرسالة.', 'error'); return false; }
+        if (!guardText(text, 'عدّل رسالتك')) return false;
         var acc = d.accounts[from] || {};
         if (!acc.super && !acc.isAdmin && (acc.points || 0) < 500) {
             toast('الرسائل الخاصة تُفتح بعد 500 نقطة.', 'error'); return false;
@@ -4202,6 +4590,13 @@
         else if (a === 'pay-confirm') reviewPayment(el.getAttribute('data-uname'), el.getAttribute('data-sid'), true);
         else if (a === 'pay-reject') reviewPayment(el.getAttribute('data-uname'), el.getAttribute('data-sid'), false);
         else if (a === 'save-pay') savePaySettings();
+        else if (a === 'save-badwords') saveBadWords();
+        else if (a === 'buy-book') orderModal('book', 'book', (fullDoc().book || {}).title || 'كتاب الأسبوع', bookPrice());
+        else if (a === 'order-ok') reviewOrder(el.getAttribute('data-oid'), true);
+        else if (a === 'order-no') reviewOrder(el.getAttribute('data-oid'), false);
+        else if (a === 'add-poll-comment') addPollComment(el.getAttribute('data-poll'));
+        else if (a === 'edit-poll-id') pollForm(el.getAttribute('data-pid'));
+        else if (a === 'del-poll') deletePoll(el.getAttribute('data-pid'));
         else if (a === 'gift') openGift();
         else if (a === 'add-partner') openAddPartner();
         else if (a === 'generate-code') openGenCode();

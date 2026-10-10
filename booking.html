@@ -11,8 +11,8 @@
         a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
     </style>
     <title>حجز مقعد بالصالون | نادي مَتن</title>
-    <link rel="stylesheet" href="fonts.css?v=45">
-    <link rel="stylesheet" href="styles.css?v=45">
+    <link rel="stylesheet" href="fonts.css?v=46">
+    <link rel="stylesheet" href="styles.css?v=46">
     <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
 <body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
@@ -81,6 +81,7 @@
             <a href="booking.html" class="block px-3 py-2.5 rounded-lg bg-matn-emerald/10 text-matn-emerald">صالونات القراءة</a>
             <a href="wallet.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">محفظة الولاء</a>
             <a href="book.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">📖 كتاب الأسبوع</a>
+            <a href="polls.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🗳 التصويتات</a>
             <a href="archive.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">🗂 أرشيف المذكرات</a>
             <a href="account.html#diary" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">📔 مذكرات الأعضاء</a>
             <a href="partners.html" class="block px-3 py-2.5 rounded-lg hover:bg-matn-creamDark transition">دليل الشركاء</a>
@@ -91,7 +92,11 @@
 
     <main class="max-w-2xl mx-auto px-4 py-8 flex-1 w-full space-y-6">
         <div class="bg-white p-6 rounded-3xl border border-matn-sand shadow-lg space-y-5">
-            <span class="inline-block text-xs bg-matn-emerald/10 text-matn-emerald font-bold px-3 py-1 rounded-full">صالون الياسمين • <span data-session-mode>حضوري وعن بعد</span></span>
+            <span class="matn-gold-frame inline-flex items-center gap-1.5 text-xs bg-matn-creamDark text-matn-emerald font-bold px-3.5 py-1.5">
+                <span class="shrink-0">🏛</span><span class="truncate" data-session-salon>الصالون</span>
+                <span class="text-matn-muted font-normal">• <span data-session-mode>حضوري وعن بعد</span></span>
+                <span class="matn-cnr" aria-hidden="true"></span>
+            </span>
             <h1 class="text-2xl font-bold font-amiri text-matn-emerald" data-session-title>أمسية نقاش: ثلاثية غرناطة (رضوى عاشور)</h1>
             <p class="text-xs text-matn-muted leading-relaxed hidden" data-session-desc></p>
             <div class="flex items-start gap-3">
@@ -152,6 +157,7 @@
                 <a href="recordings.html" class="block py-1.5 text-white/70 hover:text-white transition">التسجيلات المرئية</a>
                 <a href="wallet.html" class="block py-1.5 text-white/70 hover:text-white transition">محفظة الولاء</a>
                 <a href="book.html" class="block py-1.5 text-white/70 hover:text-white transition">📖 كتاب الأسبوع</a>
+                <a href="polls.html" class="block py-1.5 text-white/70 hover:text-white transition">🗳 التصويتات</a>
                 <a href="archive.html" class="block py-1.5 text-white/70 hover:text-white transition">🗂 أرشيف المذكرات</a>
             </div>
             <div class="space-y-2">
@@ -164,12 +170,12 @@
                 <a href="admin.html" class="block py-1.5 text-white/70 hover:text-white transition">بوابة الإشراف</a>
             </div>
         </div>
-        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 45</span></div>
+        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 46</span></div>
     </footer>
 
-    <script src="cloud-config.js?v=45" defer></script>
-    <script src="cloud.js?v=45" defer></script>
-    <script src="app.js?v=45" defer></script>
+    <script src="cloud-config.js?v=46" defer></script>
+    <script src="cloud.js?v=46" defer></script>
+    <script src="app.js?v=46" defer></script>
     <script>
         (function () {
             var btn = document.getElementById('menuBtn');
