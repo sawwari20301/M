@@ -1,0 +1,12 @@
+{
+  "name": "matn-club",
+  "version": "1.0.0",
+  "private": true,
+  "description": "نادي مَتن — static Arabic site",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/input.css -o ./styles.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

@@ -2846,7 +2846,7 @@
                     '<div class="mt-3 flex flex-wrap items-center gap-2 text-[11px]">' +
                         (Math.max(0, parseInt(b.price, 10) || 0) > 0
                             ? ('<span class="font-bold text-matn-emerald bg-matn-gold/15 border border-matn-gold/40 rounded-xl px-3 py-1.5">🛒 الكتاب للبيع: ' + arPrice(Math.max(0, parseInt(b.price, 10) || 0)) + ' — للأعضاء والمشتركين</span>' +
-                               '<button type="button" data-action="buy-book" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2 rounded-xl font-bold shadow transition">اشترِ النسخة</button>')
+                               '<button type="button" data-action="buy-book" class="ms-auto bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2 rounded-xl font-bold shadow transition">اشترِ النسخة</button>')
                             : '<span class="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5">🎁 كتاب الأسبوع مجاني للأعضاء</span>') +
                     '</div>' +
                 '</div></div>';
