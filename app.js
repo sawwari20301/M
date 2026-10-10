@@ -558,6 +558,18 @@
         } catch (e) { fb(); done(); }
     }
 
+    /* صياغة موعد مقروء بالعربية من تاريخ حقيقي */
+    var AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    var AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    function arabicWhen(iso) {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var h = d.getHours(), mm = d.getMinutes(), h12 = h % 12;
+        if (h12 === 0) h12 = 12;
+        return AR_DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + AR_MONTHS[d.getMonth()] +
+               ' • ' + h12 + ':' + (mm < 10 ? '0' + mm : mm) + ' ' + (h < 12 ? 'صباحاً' : 'مساءً');
+    }
+
     /* نافذة تأكيد */
     function confirmBox(title, text, onYes, label) {
         var id = 'cf' + Math.random().toString(36).slice(2, 8);
@@ -660,25 +672,51 @@
             title: isNew ? 'إضافة صالون جديد' : 'تعديل الصالون',
             body: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
                     '<label class="matn-field sm:col-span-2"><span>عنوان الجلسة</span><input class="matn-input" id="sfTitle" type="text" value="' + esc(v.title) + '"></label>' +
-                    '<label class="matn-field"><span>الموعد</span><input class="matn-input" id="sfWhen" type="text" value="' + esc(v.when) + '" placeholder="السبت القادم • 7:30 مساءً"></label>' +
-                    '<label class="matn-field"><span>الميسّر</span><input class="matn-input" id="sfFac" type="text" value="' + esc(v.facilitator) + '"></label>' +
-                    '<label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '"></label>' +
-                    '<label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="sfCap" type="number" min="1" step="1" value="' + (v.capacity || 6) + '"></label>' +
+                    '<div class="sm:col-span-2 bg-matn-cream border border-matn-sand rounded-xl p-3">' +
+                        '<label class="matn-field"><span>📅 اليوم والساعة (لظهور العدّاد والتذكير)</span><input class="matn-input" id="sfStart" type="datetime-local" value="' + whenValue(v.startsAt) + '"></label>' +
+                        '<div class="flex flex-wrap gap-1.5 mt-1">' +
+                            '<button type="button" class="matn-preset" data-preset="0">اليوم 7:30 م</button>' +
+                            '<button type="button" class="matn-preset" data-preset="1">غداً 7:30 م</button>' +
+                            '<button type="button" class="matn-preset" data-preset="7">بعد أسبوع 7:30 م</button>' +
+                            '<button type="button" class="matn-preset" data-preset="14">بعد أسبوعين 7:30 م</button>' +
+                        '</div>' +
+                        '<p class="text-[10px] text-matn-muted mt-2 leading-relaxed">بدون هذا الحقل لا يظهر العدّ التنازلي في الرئيسية ولا يُرسل أي تذكير.</p>' +
+                    '</div>' +
+                    '<label class="matn-field"><span>⏰ التذكير قبل الموعد</span><select class="matn-input" id="sfRemind">' +
+                        REMIND_OPTS.map(function (m) {
+                            return '<option value="' + m + '"' + ((v.reminderMin || 60) === m ? ' selected' : '') + '>' + remindLabel(m) + '</option>';
+                        }).join('') +
+                    '</select></label>' +
+                    '<label class="matn-field"><span>الموعد المعروض للزوار (اتركه فارغاً ليُكتب من اليوم والساعة)</span><input class="matn-input" id="sfWhen" type="text" value="' + esc(v.when) + '" placeholder="يُكتب تلقائياً"></label>' +
                     '<label class="matn-field"><span>نوع المجلس</span><select class="matn-input" id="sfMode">' +
                         MODES.map(function (m) {
                             return '<option value="' + m.key + '"' + ((v.mode || 'hybrid') === m.key ? ' selected' : '') + '>' + m.label + '</option>';
                         }).join('') +
                     '</select></label>' +
+                    '<label class="matn-field"><span>الميسّر</span><input class="matn-input" id="sfFac" type="text" value="' + esc(v.facilitator) + '"></label>' +
                     '<label class="matn-field sm:col-span-2"><span>رابط الاجتماع — يظهر للمحجوزين فقط (Zoom أو أي رابط)</span><input class="matn-input" id="sfLink" type="url" value="' + esc(v.link || '') + '" placeholder="https://zoom.us/j/123456789"></label>' +
-                    '<label class="matn-field"><span>تاريخ ووقت الجلسة (للتذكير والعدّ التنازلي)</span><input class="matn-input" id="sfStart" type="datetime-local" value="' + whenValue(v.startsAt) + '"></label>' +
-                    '<label class="matn-field"><span>التذكير قبل الموعد</span><select class="matn-input" id="sfRemind">' +
-                        REMIND_OPTS.map(function (m) {
-                            return '<option value="' + m + '"' + ((v.reminderMin || 60) === m ? ' selected' : '') + '>' + remindLabel(m) + '</option>';
-                        }).join('') +
-                    '</select></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '"></label>' +
+                    '<label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="sfCap" type="number" min="1" step="1" value="' + (v.capacity || 6) + '"></label>' +
                   '</div><p id="sfMsg" class="text-xs"></p>',
             footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
             ready: function (w) {
+                w.querySelectorAll('[data-preset]').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        var days = parseInt(b.getAttribute('data-preset'), 10) || 0;
+                        var d = new Date();
+                        d.setDate(d.getDate() + days);
+                        d.setHours(19, 30, 0, 0);
+                        w.querySelector('#sfStart').value = whenValue(d.toISOString());
+                        var wt = w.querySelector('#sfWhen');
+                        if (!wt.value.trim()) wt.value = arabicWhen(d.toISOString());
+                    });
+                });
+                var st = w.querySelector('#sfStart');
+                st.addEventListener('change', function () {
+                    var wt = w.querySelector('#sfWhen');
+                    var iso = whenISO(st.value);
+                    if (iso && !wt.value.trim()) wt.value = arabicWhen(iso);
+                });
                 w.querySelector('#sfGo').addEventListener('click', function () {
                     var t = w.querySelector('#sfTitle').value.trim();
                     var cap = parseInt(w.querySelector('#sfCap').value, 10);
@@ -686,15 +724,18 @@
                     if (!t) { m.textContent = 'اكتب عنوان الجلسة.'; m.className = 'text-xs text-red-700'; return; }
                     if (!(cap > 0)) { m.textContent = 'أدخل عدد مقاعد صحيحاً.'; m.className = 'text-xs text-red-700'; return; }
                     var doc2 = migrateAll(doc());
+                    var startISO = whenISO(w.querySelector('#sfStart').value);
+                    var whenTxt = w.querySelector('#sfWhen').value.trim();
+                    if (!whenTxt && startISO) whenTxt = arabicWhen(startISO);
                     var data = {
                         title: t,
-                        when: w.querySelector('#sfWhen').value.trim(),
+                        when: whenTxt,
                         facilitator: w.querySelector('#sfFac').value.trim(),
                         where: w.querySelector('#sfWhere').value.trim(),
                         capacity: cap,
                         mode: w.querySelector('#sfMode').value,
                         link: safeUrl(w.querySelector('#sfLink').value),
-                        startsAt: whenISO(w.querySelector('#sfStart').value),
+                        startsAt: startISO,
                         reminderMin: parseInt(w.querySelector('#sfRemind').value, 10) || 60
                     };
                     if (isNew) {
@@ -1682,7 +1723,9 @@
                         '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
                         '<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + modeLabel(x.mode) + '</span>' +
                             (safeUrl(x.link) ? ' · <span class="text-matn-muted">رابط الاجتماع محفوظ (يراه المحجوزون فقط)</span>' : ' · <span class="text-matn-muted">لا يوجد رابط اجتماع</span>') + '</div>' +
-                        '<div class="text-[11px] mt-0.5 text-matn-muted">' + (x.startsAt ? ('⏰ ' + esc(fmtDateTime(x.startsAt)) + ' · يصلك التنبيه ' + remindLabel(x.reminderMin || 60)) : '⏰ لم يُحدَّد موعد — لن يُرسل تذكير') + '</div>' +
+                        '<div class="text-[11px] mt-0.5 text-matn-muted">' + (x.startsAt
+                            ? ('⏰ ' + esc(fmtDateTime(x.startsAt)) + ' · يصلك التنبيه ' + remindLabel(x.reminderMin || 60))
+                            : '<span class="text-amber-700 font-bold">⚠ لم تُحدَّد اليوم والساعة — لا عدّاد ولا تذكير</span>') + '</div>' +
                     '</div>' +
                     '<div class="flex flex-wrap items-center gap-3 text-xs">' +
                         '<button type="button" data-salon-edit="' + esc(x.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
