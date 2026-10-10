@@ -31,6 +31,24 @@
         { key: 'recording', label: 'التسجيل المرئي' }
     ];
     var ALL_PERMS = PERMS.map(function (p) { return p.key; });
+    /* نوع المجلس */
+    var MODES = [
+        { key: 'in-person', label: 'حضوري في الفرع' },
+        { key: 'online', label: 'عن بعد عبر Zoom' },
+        { key: 'hybrid', label: 'حضوري وعن بعد' }
+    ];
+    function modeLabel(k) {
+        for (var i = 0; i < MODES.length; i++) if (MODES[i].key === k) return MODES[i].label;
+        return MODES[2].label;
+    }
+    /* رابط آمن: يقبل http/https فقط — أي شيء آخر يُعامَل كنص */
+    function safeUrl(u) {
+        var t = String(u === null || u === undefined ? '' : u).trim();
+        if (!t) return '';
+        if (/^https?:\/\//i.test(t)) return t;
+        if (/^[a-z][a-z0-9+.\-]*:/i.test(t)) return '';
+        return 'https://' + t;
+    }
     function permLabel(k) {
         for (var i = 0; i < PERMS.length; i++) if (PERMS[i].key === k) return PERMS[i].label;
         return k;
@@ -158,6 +176,10 @@
             dirty = true;
         }
         var feat = featuredSalon(d);
+        (d.salons || []).forEach(function (x) {
+            if (typeof x.mode !== 'string' || !x.mode) { x.mode = 'hybrid'; dirty = true; }
+            if (typeof x.link !== 'string') { x.link = ''; dirty = true; }
+        });
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
             /* مشرف قديم بلا صلاحيات → كل الصلاحيات */
@@ -457,6 +479,12 @@
                     '<label class="matn-field"><span>الميسّر</span><input class="matn-input" id="sfFac" type="text" value="' + esc(v.facilitator) + '"></label>' +
                     '<label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '"></label>' +
                     '<label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="sfCap" type="number" min="1" step="1" value="' + (v.capacity || 6) + '"></label>' +
+                    '<label class="matn-field"><span>نوع المجلس</span><select class="matn-input" id="sfMode">' +
+                        MODES.map(function (m) {
+                            return '<option value="' + m.key + '"' + ((v.mode || 'hybrid') === m.key ? ' selected' : '') + '>' + m.label + '</option>';
+                        }).join('') +
+                    '</select></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>رابط الاجتماع — يظهر للمحجوزين فقط (Zoom أو أي رابط)</span><input class="matn-input" id="sfLink" type="url" value="' + esc(v.link || '') + '" placeholder="https://zoom.us/j/123456789"></label>' +
                   '</div><p id="sfMsg" class="text-xs"></p>',
             footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
             ready: function (w) {
@@ -472,7 +500,9 @@
                         when: w.querySelector('#sfWhen').value.trim(),
                         facilitator: w.querySelector('#sfFac').value.trim(),
                         where: w.querySelector('#sfWhere').value.trim(),
-                        capacity: cap
+                        capacity: cap,
+                        mode: w.querySelector('#sfMode').value,
+                        link: safeUrl(w.querySelector('#sfLink').value)
                     };
                     if (isNew) {
                         data.id = newSalonId(doc2);
@@ -481,7 +511,7 @@
                         doc2.salons.push(data);
                     } else {
                         var t2 = salonById(doc2, id);
-                        if (t2) { t2.title = data.title; t2.when = data.when; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; }
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; }
                     }
                     saveDoc(doc2);
                     closeModal(); refresh();
@@ -1160,6 +1190,27 @@
         document.querySelectorAll('[data-session-when]').forEach(function (el) { if (salon.when) el.textContent = salon.when; });
         document.querySelectorAll('[data-session-where]').forEach(function (el) { if (salon.where) el.textContent = salon.where; });
         document.querySelectorAll('[data-session-facilitator]').forEach(function (el) { if (salon.facilitator) el.textContent = salon.facilitator; });
+        document.querySelectorAll('[data-session-mode]').forEach(function (el) { el.textContent = modeLabel(salon.mode); });
+
+        /* رابط المجلس — للمحجوزين في هذا الصالون فقط */
+        var meet = document.getElementById('meetBox');
+        if (meet) {
+            var link = safeUrl(salon.link);
+            var mine = !!s.booking && s.booking.salonId === salon.id;
+            var showLink = s.signedIn && mine && !!link && salon.mode !== 'in-person';
+            if (showLink) {
+                meet.classList.remove('hidden');
+                meet.innerHTML = '<div class="p-4 rounded-2xl border border-matn-emerald/40 bg-emerald-50 text-xs space-y-2">' +
+                        '<div class="font-bold text-matn-emerald text-sm">🔗 رابط المجلس عن بعد</div>' +
+                        '<p class="text-matn-muted leading-relaxed">هذا الرابط خاص بالمحجوزين في هذا الصالون فقط — لا تشاركه.</p>' +
+                        '<a href="' + esc(link) + '" target="_blank" rel="noopener" class="inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">افتح رابط الاجتماع ↗</a>' +
+                        '<div class="matn-code text-[10px] break-all">' + esc(link) + '</div>' +
+                    '</div>';
+            } else {
+                meet.classList.add('hidden');
+                meet.innerHTML = '';
+            }
+        }
 
         /* لوحة الإشراف — أرقام حيّة وقوائم */
         var statMembers = document.getElementById('statMembers');
@@ -1350,6 +1401,8 @@
                             (x.featured ? ' <span class="text-[10px] font-bold bg-matn-gold/25 text-matn-emerald px-1.5 py-0.5 rounded">الجلسة القادمة</span>' : '') + '</div>' +
                         '<div class="text-[11px] text-matn-muted mt-1">' + esc(x.when || '—') + ' • ' + esc(x.where || '—') + '</div>' +
                         '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
+                        '<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + modeLabel(x.mode) + '</span>' +
+                            (safeUrl(x.link) ? ' · <span class="text-matn-muted">رابط الاجتماع محفوظ (يراه المحجوزون فقط)</span>' : ' · <span class="text-matn-muted">لا يوجد رابط اجتماع</span>') + '</div>' +
                     '</div>' +
                     '<div class="flex flex-wrap items-center gap-3 text-xs">' +
                         '<button type="button" data-salon-edit="' + esc(x.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
