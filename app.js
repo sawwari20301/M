@@ -341,7 +341,8 @@
                 id: 'salon-1', title: SESSION.title, when: SESSION.when, where: SESSION.where,
                 facilitator: SESSION.facilitator, capacity: SESSION.seats, featured: true,
                 desc: '', mode: 'hybrid', link: '', startsAt: '', reminderMin: 60, poster: '',
-                at: new Date().toISOString()
+                city: 'الرياض', branchId: 'br-yasmin', venue: 'صالون مَتن - فرع الياسمين',
+                venueKind: 'cafe', durationMin: 120, at: new Date().toISOString()
             }],
             seatsLeft: SESSION.seats,
             partners: SEED_PARTNERS.slice(),
@@ -496,6 +497,7 @@
         if (state) return state;
         var d = fullDoc();
         var acc = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
+        if (acc && acc.suspended) acc = null;
         var feat = featuredSalon(d) || {
             id: 'salon-1', title: SESSION.title, when: SESSION.when, where: SESSION.where,
             facilitator: SESSION.facilitator, capacity: SESSION.seats, featured: true
@@ -577,6 +579,7 @@
         USERNAME_TAKEN: 'اسم المستخدم محجوز — اختر غيره.',
         NO_ACCOUNT: 'لا يوجد حساب بهذا الاسم. أنشئ حساباً جديداً.',
         WRONG_PASSWORD: 'كلمة المرور غير صحيحة.',
+        SUSPENDED: 'هذا الحساب موقوف من إدارة النادي — تواصل مع المشرف العام.',
         NEED_LOGIN: 'سجّل الدخول أولاً للمتابعة.',
         EMAIL_TAKEN: 'اسم المستخدم محجوز — اختر غيره.'
     };
@@ -638,6 +641,7 @@
         var d = doc();
         var acc = d.accounts[uname];
         if (!acc) return Promise.reject({ code: 'NO_ACCOUNT' });
+        if (acc.suspended) return Promise.reject({ code: 'SUSPENDED' });
         return sha256(String(pass)).then(function (hash) {
             if (hash !== acc.hash) throw { code: 'WRONG_PASSWORD' };
             d.authUser = uname;
@@ -877,6 +881,118 @@
             saveDoc(d); refresh();
             toast('أُلغي الحجز وأُفرغ المقعد', 'ok');
         }, 'إلغاء الحجز');
+    }
+
+    /* ---------- أعضاء تجريبيون (للتجربة — يمكن حذفهم أو إيقافهم) ---------- */
+    var DEMO_PASS = 'matn1234';
+    var DEMO_MEMBERS = [
+        { u: 'noura', n: 'نورة العتيبي', p: 1240, m: 1860 },
+        { u: 'sara', n: 'سارة القحطاني', p: 1105, m: 1425 },
+        { u: 'reem', n: 'ريم الشهري', p: 980, m: 1190 },
+        { u: 'lama', n: 'لمى الدوسري', p: 860, m: 960 },
+        { u: 'jawaher', n: 'جواهر الحربي', p: 735, m: 780 },
+        { u: 'haya', n: 'هيا المطيري', p: 620, m: 640 }
+    ];
+    var DEMO_TEXTS = [
+        'ثلاثية غرناطة جعلتني أعيد التفكير في معنى الفقد… أسلوب رضوى عاشور شعري حتى في النثر.',
+        'أحببت أن لكل شخصية صوتاً مستقلاً — كأننا نسمع الحكاية من ست جهات.',
+        'اقتباس بقي معي: «وكان الفقد أكبر من أن يُحكى» — ناقشناه طويلاً في الجلسة.',
+        'أقترح للجلسة القادمة كتاباً أقصر مع أسئلة نقاش جاهزة، ليكون الحوار أعمق.',
+        'فكرة: لنجعل نصف الجلسة للكتاب ونصفها الآخر لربط الأحداث بواقعنا اليوم.',
+        'سعدت بالمجموعة — تعليقاتكم على الفصل الأخير غيّرت قراءتي للنهاية تماماً.'
+    ];
+    function seedDemo() {
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
+        var d = fullDoc();
+        var exists = DEMO_MEMBERS.filter(function (m) { return d.accounts[m.u]; });
+        modal({
+            title: 'أعضاء تجريبيون',
+            body: '<p class="text-xs text-matn-muted leading-relaxed mb-3">ستُنشأ <strong>٦ حسابات تجريبية</strong> بأسماء بنات، بكلمة مرور موحّدة <code class="matn-code">' + DEMO_PASS + '</code>، وبأوقات تواجد ونقاط تجعلها تظهر في «🏵 وسام التميّز».</p>' +
+                  (exists.length ? '<p class="text-xs bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">يوجد ' + num(exists.length) + ' من هذه الأسماء مسبقاً — سيُحدَّث بدل تكراره.</p>' : '') +
+                  '<label class="flex items-center gap-2 text-xs bg-matn-cream rounded-xl px-3 py-2.5 border border-matn-sand cursor-pointer"><input type="checkbox" id="sdPosts" checked class="accent-matn-emerald"> إنشاء منشورات نقاش تجريبية (لزيادة «الردود»)</label>' +
+                  '<ul class="text-[11px] text-matn-muted mt-3 space-y-1 leading-relaxed">' + DEMO_MEMBERS.map(function (m) {
+                      return '<li>• <strong class="text-matn-charcoal">' + esc(m.n) + '</strong> — @' + esc(m.u) + ' · ' + num(m.p) + ' نقطة</li>';
+                  }).join('') + '</ul>' +
+                  '<p class="text-[11px] text-matn-muted mt-3">يمكنك لاحقاً <strong>إيقافهم</strong> أو <strong>حذفهم</strong> من قسم «الأعضاء».</p>',
+            footer: '<button type="button" id="sdGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إنشاء</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#sdGo').addEventListener('click', function () {
+                    var withPosts = !!w.querySelector('#sdPosts').checked;
+                    var dd = fullDoc();
+                    DEMO_MEMBERS.forEach(function (m) {
+                        var old = dd.accounts[m.u] || {};
+                        dd.accounts[m.u] = {
+                            name: m.n, hash: old.hash || '', points: m.p, minutes: m.m,
+                            ledger: old.ledger || [], vouchers: old.vouchers || [], bookings: old.bookings || {},
+                            phone: old.phone || '', isAdmin: false, super: false, perms: [], avatar: '',
+                            demo: true, suspended: false, createdAt: old.createdAt || new Date().toISOString()
+                        };
+                    });
+                    saveDoc(dd);
+                    var chain = Promise.resolve();
+                    DEMO_MEMBERS.forEach(function (m) {
+                        chain = chain.then(function () {
+                            return sha256(DEMO_PASS).then(function (h) {
+                                var d2 = fullDoc();
+                                if (d2.accounts[m.u]) d2.accounts[m.u].hash = h;
+                                saveDoc(d2);
+                            });
+                        });
+                    });
+                    chain.then(function () {
+                        if (withPosts) {
+                            DEMO_MEMBERS.forEach(function (m, i) {
+                                var d3 = fullDoc();
+                                DEMO_TEXTS.slice(i % 3, (i % 3) + 2).forEach(function (t) {
+                                    d3.posts.unshift({
+                                        id: 'ps-' + rnd(6), topic: 'book', user: m.u, name: m.n, text: t,
+                                        at: new Date(Date.now() - (i + 1) * 5 * 3600000).toISOString()
+                                    });
+                                });
+                                saveDoc(d3);
+                            });
+                        }
+                        closeModal(); state = null; load(); render();
+                        toast('أُنشئ ' + num(DEMO_MEMBERS.length) + ' أعضاء تجريبيين', 'ok');
+                    });
+                });
+            }
+        });
+    }
+    function purgeDemo() {
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
+        var d = fullDoc();
+        var list = Object.keys(d.accounts).filter(function (u) { return d.accounts[u].demo; });
+        if (!list.length) { toast('لا يوجد أعضاء تجريبيون.', 'info'); return; }
+        confirmBox('حذف الأعضاء التجريبيين', 'سيُحذف ' + num(list.length) + ' حساباً تجريبياً ومنشوراتهم، وتُفرَّغ مقاعدهم المحجوزة. الحسابات الحقيقية لا تُمس.', function () {
+            var d2 = fullDoc();
+            list.forEach(function (u) {
+                delete d2.accounts[u];
+                if (d2.authUser === u) d2.authUser = null;
+            });
+            d2.posts = (d2.posts || []).filter(function (p) { return list.indexOf(p.user) === -1; });
+            saveDoc(d2); state = null; load(); render();
+            toast('حُذف ' + num(list.length) + ' أعضاء تجريبيين', 'ok');
+        }, 'حذف التجريبيين');
+    }
+    function suspendMember(uname) {
+        if (!needPerm('members', 'إدارة الأعضاء')) return;
+        var d = fullDoc();
+        var a = d.accounts[uname];
+        if (!a || a.super || a.system) return;
+        if (a.suspended) {
+            a.suspended = false;
+            saveDoc(d); state = null; load(); render();
+            toast('أُعيد تنشيط «' + a.name + '»', 'ok');
+            return;
+        }
+        confirmBox('إيقاف العضو', 'سيُمنع «' + a.name + '» من تسجيل الدخول، ولن يظهر في وسام التميّز. حجوزه تبقى، ويمكنك تنشيطه في أي وقت.', function () {
+            var d2 = fullDoc();
+            d2.accounts[uname].suspended = true;
+            if (d2.authUser === uname) d2.authUser = null;
+            saveDoc(d2); state = null; load(); render();
+            toast('أُوقف «' + a.name + '»', 'ok');
+        }, 'إيقاف');
     }
 
     /* تعيين كلمة مرور جديدة لعضو */
@@ -1871,10 +1987,19 @@
         });
 
         /* المدينة ووقت اللقاء ومدته والفرع */
-        document.querySelectorAll('[data-session-city]').forEach(function (el) { el.textContent = salon.city || '—'; });
+        document.querySelectorAll('[data-session-city]').forEach(function (el) {
+            var row = el.parentElement;
+            if (salon.city) { el.textContent = salon.city; if (row) row.classList.remove('hidden'); }
+            else { el.textContent = ''; if (row && row !== el) row.classList.add('hidden'); }
+        });
         document.querySelectorAll('[data-session-time]').forEach(function (el) {
             var t = salonTimeRange(salon);
             el.textContent = t ? (t + ' · ' + durLabel(salon.durationMin)) : 'يُعلَن قريباً';
+        });
+        document.querySelectorAll('[data-session-where]').forEach(function (el) {
+            var row = el.parentElement;
+            if (String(salon.where || '').trim()) { el.textContent = salon.where; if (row) row.classList.remove('hidden'); }
+            else { el.textContent = ''; if (row && row !== el) row.classList.add('hidden'); }
         });
         var brBoxes = document.querySelectorAll('[data-session-branchbox]');
         if (brBoxes.length) {
@@ -1974,13 +2099,18 @@
                     var role = a.system ? 'الدعم الفني' : (a.super ? 'المشرف العام' : ((a.perms && a.perms.length) ? 'مدير' : 'عضو'));
                     var roleCls = a.super ? 'bg-matn-gold/25 text-matn-emerald' : ((a.perms && a.perms.length) ? 'bg-emerald-100 text-emerald-800' : 'bg-matn-creamDark text-matn-muted');
                     return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
-                        '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
-                        ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ' + roleCls + '">' + role + '</span></span>' +
+                        '<span><strong class="' + (a.suspended ? 'line-through text-matn-muted' : '') + '">' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
+                        ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ' + roleCls + '">' + role + '</span>' +
+                        (a.demo ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">تجريبي</span>' : '') +
+                        (a.suspended ? ' <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">موقوف</span>' : '') + '</span>' +
                         '<span class="flex flex-wrap items-center gap-3">' +
                             '<span class="font-bold text-matn-emerald">' + num(a.points) + ' نقطة</span>' +
                             '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح / خصم</button>' +
                             ((a.bookings && Object.keys(a.bookings).length) ? '<button type="button" data-cxl="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">إلغاء الحجوزات</button>' : '') +
                             '<button type="button" data-rp="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">كلمة مرور</button>' +
+                            ((a.super || a.system) ? '' : (a.suspended
+                                ? '<button type="button" data-suspend="' + esc(u) + '" class="text-emerald-700 font-bold hover:underline">تنشيط</button>'
+                                : '<button type="button" data-suspend="' + esc(u) + '" class="text-amber-700 font-bold hover:underline">إيقاف</button>')) +
                             (a.phone ? '<a href="' + esc(waLink(a.phone, reminderText(salon))) + '" target="_blank" rel="noopener" class="text-[#128C7E] font-bold hover:underline">واتساب</a>' : '<span class="text-matn-muted text-[10px]">بلا رقم</span>') +
                             ((a.super || a.system) ? '' : '<button type="button" data-del="' + esc(u) + '" class="text-red-700 font-bold hover:underline">حذف</button>') +
                         '</span>' +
@@ -2010,6 +2140,9 @@
                 });
                 ml.querySelectorAll('[data-tgadmin]').forEach(function (b) {
                     b.addEventListener('click', function () { toggleAdmin(b.getAttribute('data-tgadmin')); });
+                });
+                ml.querySelectorAll('[data-suspend]').forEach(function (b) {
+                    b.addEventListener('click', function () { suspendMember(b.getAttribute('data-suspend')); });
                 });
                 ml.querySelectorAll('[data-cxl]').forEach(function (b) {
                     b.addEventListener('click', function () { cancelBookingFor(b.getAttribute('data-cxl')); });
@@ -2628,7 +2761,7 @@
     }
     function topMembers(d, n) {
         return Object.keys(d.accounts || {})
-            .filter(function (u) { return !d.accounts[u].system; })
+            .filter(function (u) { return !d.accounts[u].system && !d.accounts[u].suspended; })
             .map(function (u) { return memberStats(u, d); })
             .sort(function (x, y) { return y.score - x.score || y.points - x.points; })
             .slice(0, n || 6);
@@ -2651,16 +2784,20 @@
         if (!box) return;
         var d = fullDoc();
         var list = topMembers(d, 6);
-        if (!list.length) { box.classList.add('hidden'); return; }
         box.classList.remove('hidden');
         var medals = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅'];
+        var slots = list.slice();
+        while (slots.length < 6) slots.push(null);
         box.innerHTML =
             '<div class="text-center mb-6">' +
                 '<div class="text-[11px] font-bold tracking-[.3em] text-matn-gold">نادي مَتن</div>' +
                 '<h2 class="font-amiri text-3xl font-bold text-matn-emerald mt-2">🏵 وسام التميّز</h2>' +
                 '<p class="text-xs text-matn-muted mt-2">أكثر الأعضاء تفاعلاً — بالنقاط وساعات التواجد والردود</p>' +
             '</div>' +
-            '<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">' + list.map(function (m, i) {
+            '<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">' + slots.map(function (m, i) {
+                if (!m) return '<div class="rounded-3xl border-2 border-dashed border-matn-sand bg-white/50 p-4 flex flex-col items-center justify-center min-h-[10rem] text-center">' +
+                    '<div class="text-2xl opacity-35">' + medals[i] + '</div>' +
+                    '<div class="text-[11px] text-matn-muted mt-3 leading-relaxed">مقعد متاح<br>تفاعل بالنقاط والردود لتصل هنا</div></div>';
                 var av = safeImg(m.avatar);
                 return '<div class="relative rounded-3xl p-[2px] bg-gradient-to-br from-matn-gold via-matn-goldLight to-matn-emeraldDark shadow-sm">' +
                     '<div class="bg-white rounded-[22px] p-4 text-center h-full">' +
@@ -2675,7 +2812,8 @@
                             '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + num(m.replies) + '</div><div class="text-matn-muted">ردود</div></div>' +
                         '</div>' +
                     '</div></div>';
-            }).join('') + '</div>';
+            }).join('') + '</div>' +
+            (list.length ? '' : '<p class="text-center mt-6"><a href="account.html" class="inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white text-xs font-bold px-5 py-3 rounded-xl shadow transition">أنشئ حسابك وكن أول المتميّزين</a></p>');
     }
     /* روابط الفروع في أسفل الصفحة */
     function renderFooterBranches(s) {
@@ -2868,6 +3006,8 @@
         else if (a === 'avatar') avatarForm();
         else if (a === 'new-message') newMessageForm(false);
         else if (a === 'support-reply') newMessageForm(true);
+        else if (a === 'seed-demo') seedDemo();
+        else if (a === 'purge-demo') purgeDemo();
         else if (a === 'toggle-branches') {
             var mnu = document.getElementById('branchesMenu');
             if (mnu) mnu.classList.toggle('hidden');
