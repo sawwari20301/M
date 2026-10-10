@@ -94,6 +94,31 @@
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
+                <div class="text-xs text-matn-muted">الأعضاء المسجّلون</div>
+                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2" id="statMembers">0</div>
+                <div class="text-[11px] text-matn-muted mt-1">حسابات نشطة على الموقع</div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
+                <div class="text-xs text-matn-muted">الحجوزات</div>
+                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2" id="statBookings">0</div>
+                <div class="text-[11px] text-matn-muted mt-1">من <span id="statCapacity">6</span> مقاعد</div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
+                <div class="text-xs text-matn-muted">الشركاء في الدليل</div>
+                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2" id="statPartners">0</div>
+                <div class="text-[11px] text-matn-muted mt-1">قابلون للاستبدال بالنقاط</div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
+                <div class="text-xs text-matn-muted">نقاط الولاء المصروفة</div>
+                <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2" id="statSpent">0</div>
+                <div class="text-[11px] text-matn-muted mt-1">مجموع القسائم المستبدلة</div>
+            </div>
+        </div>
+
+        <div id="adminNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl px-4 py-3 leading-relaxed"></div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-matn-sand shadow-sm">
                 <div class="text-xs text-matn-muted">إجمالي القراء</div>
                 <div class="text-3xl font-bold font-amiri text-matn-emerald mt-2">4,850</div>
                 <div class="text-[11px] text-emerald-700 mt-1 font-semibold">↑ +14.2% هذا الشهر</div>
@@ -137,6 +162,31 @@
             </div>
             <p id="recMsg" class="text-xs"></p>
             <button type="button" data-action="save-recording" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ التسجيل</button>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <h2 class="font-bold font-amiri text-lg text-matn-emerald">الجلسة القادمة</h2>
+            <p class="text-[11px] text-matn-muted">ما تعدّله هنا يظهر فوراً في الصفحة الرئيسية وصفحة الحجز.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="matn-field sm:col-span-2"><span>عنوان الجلسة</span><input class="matn-input" id="seTitle" type="text"></label>
+                <label class="matn-field"><span>الموعد</span><input class="matn-input" id="seWhen" type="text"></label>
+                <label class="matn-field"><span>الميسّر</span><input class="matn-input" id="seFac" type="text"></label>
+                <label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="seWhere" type="text"></label>
+                <label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="seCap" type="number" min="1" step="1"></label>
+            </div>
+            <p id="seMsg" class="text-xs"></p>
+            <button type="button" data-action="save-session" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ الجلسة</button>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <h2 class="font-bold font-amiri text-lg text-matn-emerald">الأعضاء</h2>
+            <p class="text-[11px] text-matn-muted">كل من سجّل في الموقع. يمكنك منح النقاط أو ترقية عضو لمشرف.</p>
+            <ul id="adminMemberList" class="text-xs"></ul>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <h2 class="font-bold font-amiri text-lg text-matn-emerald">الحجوزات</h2>
+            <ul id="adminBookingList" class="text-xs"></ul>
         </div>
 
         <div class="bg-white rounded-3xl border border-matn-sand shadow-sm overflow-hidden">

@@ -75,7 +75,8 @@
     function seedDoc() {
         return {
             accounts: {},
-            session: null,
+            authUser: null,
+            salon: { title: SESSION.title, when: SESSION.when, where: SESSION.where, facilitator: SESSION.facilitator, capacity: SESSION.seats },
             seatsLeft: SESSION.seats,
             partners: SEED_PARTNERS.slice(),
             giftCodes: JSON.parse(JSON.stringify(SEED_CODES)),
@@ -97,15 +98,16 @@
     function load() {
         if (state) return state;
         var d = doc();
-        var acc = (d.session && d.accounts[d.session]) ? d.accounts[d.session] : null;
+        var acc = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
         state = {
             signedIn: !!acc,
             user: {
-                username: acc ? d.session : null,
-                name: acc ? (acc.name || d.session) : '',
+                username: acc ? d.authUser : null,
+                name: acc ? (acc.name || d.authUser) : '',
                 points: acc ? (typeof acc.points === 'number' ? acc.points : 340) : 0,
                 isAdmin: !!(acc && acc.isAdmin)
             },
+            salon: d.salon || seedDoc().salon,
             seatsLeft: typeof d.seatsLeft === 'number' ? d.seatsLeft : SESSION.seats,
             partners: Array.isArray(d.partners) && d.partners.length ? d.partners : SEED_PARTNERS.slice(),
             giftCodes: d.giftCodes && typeof d.giftCodes === 'object' ? d.giftCodes : JSON.parse(JSON.stringify(SEED_CODES)),
@@ -120,6 +122,7 @@
     function persist() {
         var d = doc();
         d.seatsLeft = state.seatsLeft;
+        d.salon = state.salon;
         d.partners = state.partners;
         d.giftCodes = state.giftCodes;
         d.recording = state.recording;
@@ -130,7 +133,7 @@
             d.accounts[u].vouchers = state.vouchers;
             d.accounts[u].ledger = state.ledger;
         }
-        d.session = u || null;
+        d.authUser = u || null;
         saveDoc(d);
     }
 
@@ -190,7 +193,7 @@
                 isAdmin: Object.keys(d.accounts).length === 0,   // أول حساب = المشرف
                 createdAt: new Date().toISOString()
             };
-            d.session = uname;
+            d.authUser = uname;
             saveDoc(d);
             state = null; load(); render();
             return { username: uname, name: d.accounts[uname].name };
@@ -204,7 +207,7 @@
         if (!acc) return Promise.reject({ code: 'NO_ACCOUNT' });
         return sha256(String(pass)).then(function (hash) {
             if (hash !== acc.hash) throw { code: 'WRONG_PASSWORD' };
-            d.session = uname;
+            d.authUser = uname;
             saveDoc(d);
             state = null; load(); render();
             return { username: uname, name: acc.name };
@@ -213,7 +216,7 @@
 
     function signOut() {
         var d = doc();
-        d.session = null;
+        d.authUser = null;
         saveDoc(d);
         state = null; load(); render();
         toast('تم تسجيل الخروج', 'info');
@@ -222,6 +225,84 @@
     /* هل هذه العملية تحتاج تسجيل دخول؟ (في الوضع المحلي فقط — الوضع السحابي
        يستخدم الخادم لهوية الزائر حتى نضيف حسابات Supabase) */
     function needsLogin() { return !CLOUD && !load().signedIn; }
+
+    /* تعديل حساب عضو آخر (للمشرف) */
+    function updateAccount(uname, fn) {
+        var d = doc();
+        if (!d.accounts[uname]) return;
+        fn(d.accounts[uname], d);
+        saveDoc(d);
+        state = null; load(); render();
+    }
+
+    /* ---------- إجراءات لوحة التحكم ---------- */
+    function adminOnly(what) {
+        if (needsLogin()) { requireLogin(what); return false; }
+        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return false; }
+        return true;
+    }
+
+    function saveSalon() {
+        if (!adminOnly('لوحة الإشراف')) return;
+        var t = document.getElementById('seTitle').value.trim();
+        var w = document.getElementById('seWhen').value.trim();
+        var f = document.getElementById('seFac').value.trim();
+        var p = document.getElementById('seWhere').value.trim();
+        var c = parseInt(document.getElementById('seCap').value, 10);
+        var msg = document.getElementById('seMsg');
+        if (!t) { msg.textContent = 'اكتب عنوان الجلسة.'; msg.className = 'text-xs text-red-700'; return; }
+        if (!(c > 0)) { msg.textContent = 'أدخل عدد مقاعد صحيحاً.'; msg.className = 'text-xs text-red-700'; return; }
+        var booked = 0;
+        var D = doc();
+        Object.keys(D.accounts).forEach(function (u) { if (D.accounts[u].booking) booked++; });
+        change(function (st) {
+            st.salon = { title: t, when: w, where: p, facilitator: f, capacity: c };
+            st.seatsLeft = Math.max(0, c - booked);
+        });
+        msg.textContent = 'حُفظت الجلسة — ظهرت في الرئيسية وصفحة الحجز.';
+        msg.className = 'text-xs text-emerald-700';
+        toast('حُفظت بيانات الجلسة', 'ok');
+    }
+
+    function grantPoints(uname) {
+        if (!adminOnly('لوحة الإشراف')) return;
+        var d = doc();
+        var a = d.accounts[uname];
+        if (!a) return;
+        modal({
+            title: 'منح نقاط',
+            body: '<p class="text-xs text-matn-muted leading-relaxed mb-3">العضو: <strong class="text-matn-charcoal">' + esc(a.name) + '</strong> — رصيده الحالي ' + num(a.points) + ' نقطة.</p>' +
+                  '<label class="matn-field"><span>عدد النقاط (استخدم رقماً سالباً للخصم)</span><input class="matn-input" id="gpVal" type="number" step="1" value="50"></label>' +
+                  '<label class="matn-field"><span>السبب</span><input class="matn-input" id="gpWhy" type="text" value="مكافأة من المشرف"></label>' +
+                  '<p id="gpMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="gpGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">تنفيذ</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#gpGo').addEventListener('click', function () {
+                    var v = parseInt(w.querySelector('#gpVal').value, 10);
+                    var why = w.querySelector('#gpWhy').value.trim() || 'تعديل من المشرف';
+                    var m = w.querySelector('#gpMsg');
+                    if (!v) { m.textContent = 'أدخل رقماً غير صفري.'; m.className = 'text-xs text-red-700'; return; }
+                    updateAccount(uname, function (acc) {
+                        acc.points = Math.max(0, acc.points + v);
+                        acc.ledger.unshift({ reason: why, points: v, at: new Date().toISOString() });
+                    });
+                    closeModal();
+                    toast((v > 0 ? 'أُضيفت ' : 'خُصمت ') + num(Math.abs(v)) + ' نقطة', 'ok');
+                });
+            }
+        });
+    }
+
+    function toggleAdmin(uname) {
+        if (!adminOnly('لوحة الإشراف')) return;
+        var d = doc();
+        var a = d.accounts[uname];
+        if (!a) return;
+        var admins = Object.keys(d.accounts).filter(function (u) { return d.accounts[u].isAdmin; });
+        if (a.isAdmin && admins.length === 1) { toast('لا يمكن إزالة الإشراف عن المشرف الوحيد.', 'error'); return; }
+        updateAccount(uname, function (acc) { acc.isAdmin = !acc.isAdmin; });
+        toast(a.isAdmin ? 'أُزيل الإشراف' : 'تمت الترقية لمشرف', 'ok');
+    }
 
     function requireLogin(what) {
         modal({
@@ -348,9 +429,10 @@
             }).catch(function (e) { toast(cloudAr(e), 'error'); });
         }
         var code = 'MA-' + rnd(6);
+        var salon = load().salon || {};
         change(function (st) {
             st.seatsLeft = Math.max(0, st.seatsLeft - 1);
-            st.booking = { code: code, at: new Date().toISOString(), title: SESSION.title, when: SESSION.when, where: SESSION.where };
+            st.booking = { code: code, at: new Date().toISOString(), title: salon.title, when: salon.when, where: salon.where };
         });
         toast('تم تأكيد حجزك — رقم التذكرة ' + code, 'ok');
     }
@@ -730,8 +812,73 @@
                     '<span class="matn-code mt-2">update public.members set is_admin = true<br>where id = (select id from auth.users order by created_at desc limit 1);</span>';
             }
         }
+        /* الجلسة القادمة — حقول التعديل وملء الصفحات */
+        var salon = s.salon || { title: SESSION.title, when: SESSION.when, where: SESSION.where, facilitator: SESSION.facilitator, capacity: SESSION.seats };
+        var seTitle = document.getElementById('seTitle');
+        if (seTitle && document.activeElement !== seTitle) {
+            seTitle.value = salon.title || '';
+            document.getElementById('seWhen').value = salon.when || '';
+            document.getElementById('seFac').value = salon.facilitator || '';
+            document.getElementById('seWhere').value = salon.where || '';
+            document.getElementById('seCap').value = salon.capacity || 6;
+        }
+        document.querySelectorAll('[data-session-title]').forEach(function (el) { if (salon.title) el.textContent = salon.title; });
+        document.querySelectorAll('[data-session-when]').forEach(function (el) { if (salon.when) el.textContent = salon.when; });
+        document.querySelectorAll('[data-session-where]').forEach(function (el) { if (salon.where) el.textContent = salon.where; });
+        document.querySelectorAll('[data-session-facilitator]').forEach(function (el) { if (salon.facilitator) el.textContent = salon.facilitator; });
+
+        /* لوحة الإشراف — أرقام حيّة وقوائم */
+        var statMembers = document.getElementById('statMembers');
+        if (statMembers) {
+            var D = doc();
+            var users = Object.keys(D.accounts);
+            var bookedUsers = users.filter(function (u) { return D.accounts[u].booking; });
+            var spentTotal = 0;
+            users.forEach(function (u) {
+                (D.accounts[u].vouchers || []).forEach(function (v) { spentTotal += v.cost; });
+            });
+            statMembers.textContent = num(users.length);
+            var sb = document.getElementById('statBookings'); if (sb) sb.textContent = num(bookedUsers.length);
+            var spp = document.getElementById('statPartners'); if (spp) spp.textContent = num(s.partners.length);
+            var ss = document.getElementById('statSpent'); if (ss) ss.textContent = num(spentTotal);
+            var sc = document.getElementById('statCapacity'); if (sc) sc.textContent = num(salon.capacity || 6);
+
+            var ml = document.getElementById('adminMemberList');
+            if (ml) {
+                ml.innerHTML = users.length ? users.map(function (u) {
+                    var a = D.accounts[u];
+                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-2 border-b border-matn-sand/60">' +
+                        '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
+                        (a.isAdmin ? ' <span class="bg-matn-gold/20 text-matn-emerald text-[10px] font-bold px-1.5 py-0.5 rounded">مشرف</span>' : '') + '</span>' +
+                        '<span class="flex flex-wrap items-center gap-3">' +
+                            '<span class="font-bold text-matn-emerald">' + num(a.points) + ' نقطة</span>' +
+                            '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح نقاط</button>' +
+                            '<button type="button" data-tgadmin="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">' + (a.isAdmin ? 'إزالة الإشراف' : 'ترقية لمشرف') + '</button>' +
+                        '</span></li>';
+                }).join('') : '<li class="text-matn-muted py-2">لا يوجد أعضاء مسجّلون بعد.</li>';
+                ml.querySelectorAll('[data-grant]').forEach(function (b) {
+                    b.addEventListener('click', function () { grantPoints(b.getAttribute('data-grant')); });
+                });
+                ml.querySelectorAll('[data-tgadmin]').forEach(function (b) {
+                    b.addEventListener('click', function () { toggleAdmin(b.getAttribute('data-tgadmin')); });
+                });
+            }
+
+            var bl = document.getElementById('adminBookingList');
+            if (bl) {
+                var rows = bookedUsers.map(function (u) {
+                    var a = D.accounts[u], b = a.booking;
+                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-2 border-b border-matn-sand/60">' +
+                        '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span></span>' +
+                        '<span class="flex flex-wrap items-center gap-3"><span class="matn-code">' + esc(b.code) + '</span>' +
+                        '<span class="text-matn-muted">' + esc(fmtDate(b.at)) + '</span></span></li>';
+                });
+                bl.innerHTML = rows.length ? rows.join('') : '<li class="text-matn-muted py-2">لا توجد حجوزات بعد.</li>';
+            }
+        }
+
         var spent = document.getElementById('statSpent');
-        if (spent) spent.textContent = num(s.vouchers.reduce(function (a, v) { return a + v.cost; }, 0));
+        if (spent && !statMembers) spent.textContent = num(s.vouchers.reduce(function (a, v) { return a + v.cost; }, 0));
         var ap = document.getElementById('adminPartnerList');
         if (ap) {
             ap.innerHTML = s.partners.map(function (p) {
@@ -810,6 +957,7 @@
         else if (a === 'generate-code') openGenCode();
         else if (a === 'play-recording') playRecording();
         else if (a === 'save-recording') saveRecording();
+        else if (a === 'save-session') saveSalon();
         else if (a === 'signout') standaloneSignOut();
     });
 
