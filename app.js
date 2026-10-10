@@ -49,6 +49,97 @@
         if (/^[a-z][a-z0-9+.\-]*:/i.test(t)) return '';
         return 'https://' + t;
     }
+
+    /* ---------- التذكير بالموعد ---------- */
+    var REMIND_OPTS = [15, 30, 60, 120, 180, 1440];
+    function remindLabel(m) {
+        if (m === 1440) return 'قبل يوم';
+        if (m === 60) return 'قبل ساعة';
+        if (m === 120) return 'قبل ساعتين';
+        if (m === 180) return 'قبل 3 ساعات';
+        return 'قبل ' + m + ' دقيقة';
+    }
+    function whenValue(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function whenISO(v) {
+        if (!v) return '';
+        var d = new Date(v);
+        return isNaN(d.getTime()) ? '' : d.toISOString();
+    }
+    function countdown(iso) {
+        var d = new Date(iso);
+        if (!iso || isNaN(d.getTime())) return null;
+        var ms = d.getTime() - Date.now();
+        if (ms <= 0) return { started: true, soon: true, ms: ms, text: 'بدأت الجلسة — يمكنك الانضمام الآن' };
+        var m = Math.floor(ms / 60000);
+        var dd = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60;
+        var txt = dd > 0 ? (dd + ' يوم و ' + hh + ' ساعة')
+                : (hh > 0 ? (hh + ' ساعة و ' + mm + ' دقيقة') : (mm + ' دقيقة'));
+        return { started: false, soon: ms <= 3600000, ms: ms, text: 'تبقّى ' + txt };
+    }
+    /* صياغة العدّاد للبطاقة العامة */
+    function cdLabel(cd) {
+        if (!cd) return '';
+        return cd.started ? '🔴 الجلسة الآن — يمكنك الانضمام' : ('⏳ ' + cd.text + ' على البدء');
+    }
+    function icsEsc(t) {
+        return String(t || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+    }
+    function icsStamp(d) {
+        return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    }
+    /* ملف تقويم فيه الرابط + تنبيه قبل الموعد — يعمل على آيفون وأندرويد وجوجل */
+    function icsFor(salon, link) {
+        var start = new Date(salon.startsAt);
+        if (isNaN(start.getTime())) return '';
+        var end = new Date(start.getTime() + 90 * 60000);
+        var mins = salon.reminderMin || 60;
+        var desc = (link ? ('رابط المجلس: ' + link + '\n') : '') + 'نادي مَتن — صالون القراءة';
+        return [
+            'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Matn Club//AR//', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+            'BEGIN:VEVENT',
+            'UID:' + salon.id + '-' + start.getTime() + '@matn.club',
+            'DTSTAMP:' + icsStamp(new Date()),
+            'DTSTART:' + icsStamp(start),
+            'DTEND:' + icsStamp(end),
+            'SUMMARY:' + icsEsc(salon.title),
+            'DESCRIPTION:' + icsEsc(desc),
+            'LOCATION:' + icsEsc(link || salon.where || ''),
+            (link ? 'URL:' + icsEsc(link) : 'X-NOLINK:1'),
+            'BEGIN:VALARM', 'TRIGGER:-PT' + mins + 'M', 'ACTION:DISPLAY',
+            'DESCRIPTION:' + icsEsc('تذكير: ' + salon.title), 'END:VALARM',
+            'END:VEVENT', 'END:VCALENDAR'
+        ].join('\r\n');
+    }
+    function downloadICS(salon, link) {
+        var text = icsFor(salon, link);
+        if (!text) { toast('حدّد موعد الجلسة أولاً من اللوحة.', 'error'); return; }
+        var name = 'matn-' + String(salon.title || 'salon').replace(/[^\p{L}\p{N}\-]+/gu, '-').slice(0, 40) + '.ics';
+        try {
+            var blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = name;
+            document.body.appendChild(a); a.click();
+            window.setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1500);
+            toast('نزّل ملف التذكير — افتحه فيتقوّلك في تقويم جوالك', 'ok');
+        } catch (e) { toast('تعذّر إنشاء الملف في هذا المتصفح.', 'error'); }
+    }
+    function gcalUrl(salon, link) {
+        var start = new Date(salon.startsAt);
+        if (isNaN(start.getTime())) return '';
+        var end = new Date(start.getTime() + 90 * 60000);
+        return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+            '&text=' + encodeURIComponent(salon.title || 'صالون مَتن') +
+            '&dates=' + icsStamp(start) + '/' + icsStamp(end) +
+            '&details=' + encodeURIComponent((link ? ('رابط المجلس: ' + link + '\n') : '') + 'نادي مَتن') +
+            '&location=' + encodeURIComponent(link || salon.where || '');
+    }
     function permLabel(k) {
         for (var i = 0; i < PERMS.length; i++) if (PERMS[i].key === k) return PERMS[i].label;
         return k;
@@ -96,6 +187,11 @@
     function fmtDate(iso) {
         try {
             return new Date(iso).toLocaleDateString('ar-SA-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
+        } catch (e) { return ''; }
+    }
+    function fmtDateTime(iso) {
+        try {
+            return new Date(iso).toLocaleString('ar-SA-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         } catch (e) { return ''; }
     }
     function catCls(i) { return (CATEGORIES[i] || CATEGORIES[0]).cls; }
@@ -179,6 +275,8 @@
         (d.salons || []).forEach(function (x) {
             if (typeof x.mode !== 'string' || !x.mode) { x.mode = 'hybrid'; dirty = true; }
             if (typeof x.link !== 'string') { x.link = ''; dirty = true; }
+            if (typeof x.startsAt !== 'string') { x.startsAt = ''; dirty = true; }
+            if (!(x.reminderMin > 0)) { x.reminderMin = 60; dirty = true; }
         });
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
@@ -373,6 +471,93 @@
         return true;
     }
 
+    /* الصالون الذي حجز فيه العضو الحالي */
+    function bookedSalon() {
+        var s = load();
+        if (!s.booking) return null;
+        return salonById(migrateAll(doc()), s.booking.salonId) || s.salon;
+    }
+    /* تفعيل إشعار المتصفح (يحتاج إبقاء الصفحة مفتوحة) */
+    function armBrowserReminder() {
+        var salon = bookedSalon();
+        if (!salon || !salon.startsAt) { toast('لا يوجد موعد محدَّد للتذكير.', 'error'); return; }
+        if (!('Notification' in window)) { toast('متصفحك لا يدعم الإشعارات — استخدم زر التقويم.', 'info'); return; }
+        var mins = salon.reminderMin || 60;
+        var delay = new Date(salon.startsAt).getTime() - mins * 60000 - Date.now();
+        if (delay <= 0) { toast('وقت التذكير مضى — أضفه إلى تقويمك ليصلك في الوقت.', 'info'); return; }
+        var go = function (perm) {
+            if (perm !== 'granted') { toast('لم يُسمح بالإشعارات — استخدم زر التقويم.', 'info'); return; }
+            window.setTimeout(function () {
+                var link = safeUrl(salon.link);
+                try { new Notification('نادي مَتن — حان موعد المجلس', { body: salon.title + (link ? ('\n' + link) : ''), tag: 'matn-' + salon.id }); } catch (e) {}
+                toast('حان موعد المجلس — الرابط في الأعلى', 'ok');
+            }, delay);
+            toast('سأذكّرك ' + remindLabel(mins) + ' — أبقِ الصفحة مفتوحة.', 'ok');
+        };
+        try {
+            var r = Notification.requestPermission(go);
+            if (r && r.then) r.then(go);
+        } catch (e) { toast('تعذّر تشغيل الإشعارات في هذا المتصفح.', 'info'); }
+    }
+
+    /* صف التذكير عبر واتساب داخل بطاقة المحجوز */
+    function waRemindRow(salon) {
+        var d = migrateAll(doc());
+        var s = load();
+        var mine = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
+        var phone = (mine && mine.phone) || (s.booking && s.booking.phone) || '';
+        var link = waLink(phone, reminderText(salon));
+        if (link) {
+            return '<div class="bg-white/70 border border-emerald-200 rounded-xl p-3 space-y-2">' +
+                    '<div class="font-bold text-emerald-800">📱 تذكير واتساب — <span dir="ltr">' + esc(phone) + '</span></div>' +
+                    '<a href="' + esc(link) + '" target="_blank" rel="noopener" class="inline-block bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">أرسل التذكير إليّ على واتساب</a>' +
+                    '<button type="button" data-action="edit-phone" class="text-matn-muted font-bold text-[11px] hover:underline mr-2">تغيير الرقم</button>' +
+                    '<div class="text-[10px] text-matn-muted leading-relaxed">تفتح الرسالة جاهزة — اضغط إرسال في واتساب.</div>' +
+                '</div>';
+        }
+        var g = readGuest();
+        return '<div class="bg-white/70 border border-matn-sand rounded-xl p-3 space-y-2">' +
+                '<div class="font-bold text-matn-emerald">📱 تذكير واتساب</div>' +
+                '<div class="text-[11px] text-matn-muted leading-relaxed">أضف رقم واتساب ليصلك تذكير جاهز بالرابط قبل الموعد بضغطة واحدة.</div>' +
+                '<div class="flex flex-wrap gap-2">' +
+                    '<input class="matn-input" id="waPhone" style="max-width:14rem" type="tel" inputmode="tel" value="' + esc(g.phone || '') + '" placeholder="0555555555">' +
+                    '<button type="button" data-action="save-phone" class="bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ الرقم</button>' +
+                '</div>' +
+            '</div>';
+    }
+    /* حفظ رقم الواتساب (للعضو نفسه) */
+    function saveMyPhone() {
+        var el = document.getElementById('waPhone');
+        var p = el ? el.value.trim() : '';
+        if (!waNumber(p)) { toast('أدخل رقماً صحيحاً — مثال: 0555555555', 'error'); return; }
+        var d = migrateAll(doc());
+        var u = d.authUser;
+        if (u && d.accounts[u]) d.accounts[u].phone = p;
+        if (u && d.accounts[u] && d.accounts[u].booking) d.accounts[u].booking.phone = p;
+        var g = readGuest(); saveGuest(g.name || '', g.email || '', p);
+        saveDoc(d); refresh();
+        toast('حُفظ رقم الواتساب', 'ok');
+    }
+
+    /* نسخ نص التذكير للصقه في واتساب */
+    function copyReminder() {
+        if (!needPerm('bookings', 'الحجوزات')) return;
+        var text = reminderText(load().salon);
+        var done = function () { toast('نُسخ نص التذكير — الصقه في واتساب أو أرسله للمجموعة', 'ok'); };
+        var fb = function () {
+            var ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            ta.remove();
+        };
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(function () { fb(); done(); });
+            } else { fb(); done(); }
+        } catch (e) { fb(); done(); }
+    }
+
     /* نافذة تأكيد */
     function confirmBox(title, text, onYes, label) {
         var id = 'cf' + Math.random().toString(36).slice(2, 8);
@@ -485,6 +670,12 @@
                         }).join('') +
                     '</select></label>' +
                     '<label class="matn-field sm:col-span-2"><span>رابط الاجتماع — يظهر للمحجوزين فقط (Zoom أو أي رابط)</span><input class="matn-input" id="sfLink" type="url" value="' + esc(v.link || '') + '" placeholder="https://zoom.us/j/123456789"></label>' +
+                    '<label class="matn-field"><span>تاريخ ووقت الجلسة (للتذكير والعدّ التنازلي)</span><input class="matn-input" id="sfStart" type="datetime-local" value="' + whenValue(v.startsAt) + '"></label>' +
+                    '<label class="matn-field"><span>التذكير قبل الموعد</span><select class="matn-input" id="sfRemind">' +
+                        REMIND_OPTS.map(function (m) {
+                            return '<option value="' + m + '"' + ((v.reminderMin || 60) === m ? ' selected' : '') + '>' + remindLabel(m) + '</option>';
+                        }).join('') +
+                    '</select></label>' +
                   '</div><p id="sfMsg" class="text-xs"></p>',
             footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
             ready: function (w) {
@@ -502,7 +693,9 @@
                         where: w.querySelector('#sfWhere').value.trim(),
                         capacity: cap,
                         mode: w.querySelector('#sfMode').value,
-                        link: safeUrl(w.querySelector('#sfLink').value)
+                        link: safeUrl(w.querySelector('#sfLink').value),
+                        startsAt: whenISO(w.querySelector('#sfStart').value),
+                        reminderMin: parseInt(w.querySelector('#sfRemind').value, 10) || 60
                     };
                     if (isNew) {
                         data.id = newSalonId(doc2);
@@ -511,7 +704,7 @@
                         doc2.salons.push(data);
                     } else {
                         var t2 = salonById(doc2, id);
-                        if (t2) { t2.title = data.title; t2.when = data.when; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; }
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; }
                     }
                     saveDoc(doc2);
                     closeModal(); refresh();
@@ -727,8 +920,35 @@
     function readGuest() {
         try { return JSON.parse(localStorage.getItem('matn_guest_v1') || '{}'); } catch (e) { return {}; }
     }
-    function saveGuest(name, email) {
-        try { localStorage.setItem('matn_guest_v1', JSON.stringify({ name: name, email: email })); } catch (e) {}
+    function saveGuest(name, email, phone) {
+        try { localStorage.setItem('matn_guest_v1', JSON.stringify({ name: name, email: email, phone: phone || '' })); } catch (e) {}
+    }
+
+    /* ---------- واتساب ---------- */
+    var CC = '966';   /* مفتاح الدولة الافتراضي (السعودية) */
+    function waNumber(p) {
+        var n = String(p === null || p === undefined ? '' : p).replace(/[^0-9+]/g, '').replace(/\+/g, '');
+        if (!n) return '';
+        if (n.indexOf('00') === 0) n = n.slice(2);
+        if (n.charAt(0) === '0') n = CC + n.slice(1);
+        return n.length >= 9 ? n : '';
+    }
+    function waLink(p, text) {
+        var n = waNumber(p);
+        if (!n) return '';
+        return 'https://wa.me/' + n + '?text=' + encodeURIComponent(text || '');
+    }
+    /* نص التذكير الجاهز للإرسال */
+    function reminderText(salon) {
+        var out = ['⏰ تذكير بمجلس نادي مَتن'];
+        if (salon.title) out.push('📖 ' + salon.title);
+        if (salon.startsAt) out.push('📅 ' + fmtDateTime(salon.startsAt));
+        else if (salon.when) out.push('📅 ' + salon.when);
+        var link = safeUrl(salon.link);
+        if (link) out.push('🔗 رابط المجلس: ' + link);
+        if (salon.where) out.push('📍 ' + salon.where);
+        out.push('— نادي مَتن');
+        return out.join('\n');
     }
 
     /* حجز مقعد — يطلب الاسم والبريد ثم ينفّذ */
@@ -741,6 +961,10 @@
         var g = readGuest();
         var needEmail = !!(CLOUD && window.MatnCloud && window.MatnCloud.emailTickets);
 
+        var g0 = readGuest();
+        var d0 = migrateAll(doc());
+        var acc0 = d0.authUser ? d0.accounts[d0.authUser] : null;
+        var phone = (acc0 && acc0.phone) || g0.phone || '';
         modal({
             title: 'تأكيد حجز المقعد',
             body:
@@ -749,6 +973,7 @@
                 '</p>' +
                 '<label class="matn-field"><span>الاسم</span><input class="matn-input" id="bkName" type="text" value="' + esc(g.name || '') + '" placeholder="اسمك"></label>' +
                 '<label class="matn-field"><span>البريد الإلكتروني' + (needEmail ? '' : ' (اختياري)') + '</span><input class="matn-input" id="bkEmail" type="email" value="' + esc(g.email || '') + '" placeholder="name@example.com"></label>' +
+                '<label class="matn-field"><span>رقم واتساب (للتذكير قبل الموعد)</span><input class="matn-input" id="bkPhone" type="tel" inputmode="tel" value="' + esc(phone) + '" placeholder="0555555555"></label>' +
                 '<p id="bkMsg" class="text-xs mt-1"></p>',
             footer: '<button type="button" id="bkGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">تأكيد الحجز</button>' + okBtn('إلغاء'),
             ready: function (w) {
@@ -759,21 +984,24 @@
                 w.querySelector('#bkGo').addEventListener('click', function () {
                     var name = nameEl.value.trim();
                     var email = mailEl.value.trim();
+                    var phoneEl = w.querySelector('#bkPhone');
+                    var phone = phoneEl ? phoneEl.value.trim() : '';
                     if (!name) { msg.textContent = 'اكتب اسمك.'; msg.className = 'text-xs mt-1 text-red-700'; return; }
+                    if (phone && !waNumber(phone)) { msg.textContent = 'رقم الواتساب غير صحيح — مثال: 0555555555'; msg.className = 'text-xs mt-1 text-red-700'; return; }
                     if (needEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
                         msg.textContent = 'أدخل بريداً صحيحاً — التذكرة تُرسل إليه.';
                         msg.className = 'text-xs mt-1 text-red-700';
                         return;
                     }
-                    saveGuest(name, email);
+                    saveGuest(name, email, phone);
                     closeModal();
-                    doBook(name, email);
+                    doBook(name, email, phone);
                 });
             }
         });
     }
 
-    function doBook(name, email) {
+    function doBook(name, email, phone) {
         if (CLOUD) {
             return window.MatnCloud.bookSeat(name, email).then(function (code) {
                 return refresh().then(function () {
@@ -789,12 +1017,17 @@
         }
         var code = 'MA-' + rnd(6);
         var salon = load().salon || {};
+        var ph = phone || '';
         change(function (st) {
             st.booking = {
                 code: code, at: new Date().toISOString(), salonId: salon.id,
-                title: salon.title, when: salon.when, where: salon.where
+                title: salon.title, when: salon.when, where: salon.where, phone: ph
             };
         });
+        if (ph) {
+            var dd = migrateAll(doc());
+            if (dd.authUser && dd.accounts[dd.authUser]) { dd.accounts[dd.authUser].phone = ph; saveDoc(dd); }
+        }
         toast('تم تأكيد حجزك — رقم التذكرة ' + code, 'ok');
     }
     function cancelBooking() {
@@ -1192,6 +1425,46 @@
         document.querySelectorAll('[data-session-facilitator]').forEach(function (el) { if (salon.facilitator) el.textContent = salon.facilitator; });
         document.querySelectorAll('[data-session-mode]').forEach(function (el) { el.textContent = modeLabel(salon.mode); });
 
+        /* عدّاد تنازلي عام على بطاقة الصالون — يراه الجميع */
+        document.querySelectorAll('[data-session-countdown]').forEach(function (el) {
+            var cd = countdown(salon.startsAt);
+            if (!cd) { el.classList.add('hidden'); el.removeAttribute('data-at'); return; }
+            el.classList.remove('hidden');
+            el.setAttribute('data-at', salon.startsAt);
+            el.textContent = cdLabel(cd);
+        });
+
+        /* تذكير الموعد — للمحجوزين في هذا الصالون فقط */
+        var rb = document.getElementById('remindBox');
+        if (rb) {
+            var bs = bookedSalon();
+            var cd = bs ? countdown(bs.startsAt) : null;
+            var isMine = !!s.booking && !!bs && s.booking.salonId === bs.id;
+            var slink = bs ? safeUrl(bs.link) : '';
+            if (s.signedIn && isMine && cd) {
+                rb.classList.remove('hidden');
+                var tone = cd.started ? 'border-matn-emerald bg-emerald-50' : (cd.soon ? 'border-amber-300 bg-amber-50' : 'border-matn-sand bg-matn-cream');
+                rb.innerHTML = '<div class="p-4 rounded-2xl border text-xs space-y-3 ' + tone + '">' +
+                        '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                            '<div class="font-bold text-matn-emerald text-sm">⏰ تذكير بموعد المجلس</div>' +
+                            '<div class="font-bold" data-countdown data-at="' + esc(bs.startsAt) + '"><span data-countdown-text>' + esc(cd.text) + '</span></div>' +
+                        '</div>' +
+                        '<div class="text-matn-muted leading-relaxed">' + esc(bs.title) + ' — ' + esc(fmtDateTime(bs.startsAt)) +
+                            ' · يصلك التنبيه ' + remindLabel(bs.reminderMin || 60) + '.' + (slink ? ' ورابط المجلس جاهز بالأسفل ↓' : '') + '</div>' +
+                        waRemindRow(bs)
+                        '<div class="flex flex-wrap gap-2">' +
+                            '<button type="button" data-action="remind-ics" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">أضف التذكير إلى تقويمي (‎.ics‎)</button>' +
+                            '<a href="' + esc(gcalUrl(bs, slink)) + '" target="_blank" rel="noopener" class="bg-white border border-matn-sand hover:border-matn-gold px-4 py-2.5 rounded-xl text-xs font-bold transition">أضف إلى Google Calendar</a>' +
+                            '<button type="button" data-action="remind-notify" class="bg-white border border-matn-sand hover:border-matn-gold px-4 py-2.5 rounded-xl text-xs font-bold transition">نشّطني في المتصفح</button>' +
+                        '</div>' +
+                        '<div class="text-[10px] text-matn-muted leading-relaxed">التذكير في التقويم يعمل من جوالك حتى بدون فتح الموقع. «نشّطني في المتصفح» يحتاج إبقاء الصفحة مفتوحة.</div>' +
+                    '</div>';
+            } else {
+                rb.classList.add('hidden');
+                rb.innerHTML = '';
+            }
+        }
+
         /* رابط المجلس — للمحجوزين في هذا الصالون فقط */
         var meet = document.getElementById('meetBox');
         if (meet) {
@@ -1242,6 +1515,7 @@
                             '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح / خصم</button>' +
                             (a.booking ? '<button type="button" data-cxl="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">إلغاء الحجز</button>' : '') +
                             '<button type="button" data-rp="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">كلمة مرور</button>' +
+                            (a.phone ? '<a href="' + esc(waLink(a.phone, reminderText(salon))) + '" target="_blank" rel="noopener" class="text-[#128C7E] font-bold hover:underline">واتساب</a>' : '<span class="text-matn-muted text-[10px]">بلا رقم</span>') +
                             (a.super ? '' : '<button type="button" data-del="' + esc(u) + '" class="text-red-700 font-bold hover:underline">حذف</button>') +
                         '</span>' +
                         '<div class="w-full flex flex-wrap items-center gap-2 mt-2">' +
@@ -1284,10 +1558,15 @@
             if (bl) {
                 var rows = bookedUsers.map(function (u) {
                     var a = D.accounts[u], b = a.booking;
-                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-2 border-b border-matn-sand/60">' +
-                        '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span></span>' +
-                        '<span class="flex flex-wrap items-center gap-3"><span class="matn-code">' + esc(b.code) + '</span>' +
-                        '<span class="text-matn-muted">' + esc(fmtDate(b.at)) + '</span></span></li>';
+                    var wl = waLink(a.phone, reminderText(salonById(D, b.salonId) || salon));
+                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
+                        '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
+                            (a.phone ? ' <span class="text-[10px] text-matn-muted" dir="ltr">' + esc(a.phone) + '</span>' : ' <span class="text-[10px] text-red-700">بلا رقم</span>') + '</span>' +
+                        '<span class="flex flex-wrap items-center gap-3">' +
+                            '<span class="matn-code">' + esc(b.code) + '</span>' +
+                            '<span class="text-matn-muted">' + esc(fmtDate(b.at)) + '</span>' +
+                            (wl ? '<a href="' + esc(wl) + '" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-2.5 py-1.5 rounded-lg font-bold">تذكير واتساب</a>' : '') +
+                        '</span></li>';
                 });
                 bl.innerHTML = rows.length ? rows.join('') : '<li class="text-matn-muted py-2">لا توجد حجوزات بعد.</li>';
             }
@@ -1403,6 +1682,7 @@
                         '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
                         '<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + modeLabel(x.mode) + '</span>' +
                             (safeUrl(x.link) ? ' · <span class="text-matn-muted">رابط الاجتماع محفوظ (يراه المحجوزون فقط)</span>' : ' · <span class="text-matn-muted">لا يوجد رابط اجتماع</span>') + '</div>' +
+                        '<div class="text-[11px] mt-0.5 text-matn-muted">' + (x.startsAt ? ('⏰ ' + esc(fmtDateTime(x.startsAt)) + ' · يصلك التنبيه ' + remindLabel(x.reminderMin || 60)) : '⏰ لم يُحدَّد موعد — لن يُرسل تذكير') + '</div>' +
                     '</div>' +
                     '<div class="flex flex-wrap items-center gap-3 text-xs">' +
                         '<button type="button" data-salon-edit="' + esc(x.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
@@ -1462,6 +1742,14 @@
         else if (a === 'save-recording') saveRecording();
         else if (a === 'add-salon') salonForm(null);
         else if (a === 'add-member') addMemberForm();
+        else if (a === 'remind-ics') { var bs1 = bookedSalon(); if (bs1) downloadICS(bs1, safeUrl(bs1.link)); }
+        else if (a === 'remind-notify') armBrowserReminder();
+        else if (a === 'save-phone') saveMyPhone();
+        else if (a === 'edit-phone') {
+            var d0 = migrateAll(doc()); var u0 = d0.authUser;
+            if (u0 && d0.accounts[u0]) { d0.accounts[u0].phone = ''; saveDoc(d0); refresh(); }
+        }
+        else if (a === 'copy-reminder') copyReminder();
         else if (a === 'claim-admin') claimSuperAdmin();
         else if (a === 'signout') standaloneSignOut();
     });
@@ -1505,6 +1793,20 @@
     }
 
     function boot() { wireAccountPage(); refresh(); }
+
+    /* تحديث العدّ التنازلي حيّاً بلا إعادة رسم (كي لا يُفسد ما يكتبه المستخدم) */
+    window.setInterval(function () {
+            var els = document.querySelectorAll('[data-countdown], [data-session-countdown]');
+        for (var i = 0; i < els.length; i++) {
+            var at = els[i].getAttribute('data-at');
+            if (!at) continue;
+            var cd = countdown(at);
+            if (!cd) continue;
+            if (els[i].hasAttribute('data-session-countdown')) { els[i].textContent = cdLabel(cd); continue; }
+            var t = els[i].querySelector('[data-countdown-text]');
+            if (t) t.textContent = cd.text; else els[i].textContent = cd.text;
+        }
+    }, 30000);
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', boot);

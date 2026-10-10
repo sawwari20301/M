@@ -175,8 +175,13 @@
         </div>
 
         <div data-need-perm="bookings" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
-            <h2 id="sec-bookings" class="font-bold font-amiri text-lg text-matn-emerald">الحجوزات</h2>
-            <p class="text-[11px] text-matn-muted">من قسم الأعضاء يمكنك إلغاء حجز أي عضو — يُفرَّغ المقعد تلقائياً.</p>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="sec-bookings" class="font-bold font-amiri text-lg text-matn-emerald">الحجوزات</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">لكل محجوز زر «تذكير واتساب» يفتح رسالة جاهزة بالموعد والرابط. ومن قسم الأعضاء يمكنك إلغاء أي حجز — يُفرَّغ المقعد تلقائياً.</p>
+                </div>
+                <button type="button" data-action="copy-reminder" class="shrink-0 bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">نسخ نص التذكير</button>
+            </div>
             <ul id="adminBookingList" class="text-xs"></ul>
         </div>
 
