@@ -11,8 +11,8 @@
         a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
     </style>
     <title>لوحة تحكم المشرف العام | نادي مَتن</title>
-    <link rel="stylesheet" href="fonts.css?v=43">
-    <link rel="stylesheet" href="styles.css?v=43">
+    <link rel="stylesheet" href="fonts.css?v=44">
+    <link rel="stylesheet" href="styles.css?v=44">
     <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
 <body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
@@ -243,6 +243,26 @@
             <ul id="adminBookingList" class="text-xs"></ul>
         </div>
 
+        <div id="paySettings" data-need-perm="bookings" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-bold font-amiri text-lg text-matn-emerald">💳 بوابة الدفع — تحويل بنكي</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">تُعرض هذه البيانات للعضو عند حجز جلسة <strong>مدفوعة</strong>، ثم يرفع صورة الإيصال وتُفعِّل اشتراكه من قسم «الحجوزات».</p>
+                </div>
+                <button type="button" data-action="save-pay" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ بيانات الدفع</button>
+            </div>
+            <p id="payWarn" class="text-[11px] text-amber-700"></p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="matn-field"><span>اسم البنك</span><input class="matn-input" id="payBank" type="text" placeholder="مثال: مصرف الراجحي"></label>
+                <label class="matn-field"><span>اسم المستفيد</span><input class="matn-input" id="payHolder" type="text" placeholder="نادي مَتن للقراءة والحوار"></label>
+                <label class="matn-field"><span>رقم الآيبان (IBAN)</span><input class="matn-input" id="payIban" type="text" dir="ltr" placeholder="SA0000000000000000000000"></label>
+                <label class="matn-field"><span>رقم الحساب (بديل)</span><input class="matn-input" id="payAccount" type="text" dir="ltr" placeholder="1234567890"></label>
+                <label class="matn-field"><span>واتساب لاستفسارات الدفع</span><input class="matn-input" id="payWhats" type="tel" inputmode="tel" placeholder="0555555555"></label>
+                <label class="matn-field"><span>ملاحظة تظهر للعضو</span><input class="matn-input" id="payNote" type="text" placeholder="اكتب اسمك في خانة الملاحظات عند التحويل."></label>
+            </div>
+            <p class="text-[10px] text-matn-muted">🔓 البوابة الحالية: تحويل بنكي + رفع إيصال. لاحقاً يمكن ربط بوابة دفع إلكترونية (مدى/فيزا) وتصبح العملية تلقائية.</p>
+        </div>
+
             <div data-super-only class="hidden bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -279,12 +299,12 @@
                 <a href="admin.html" class="block py-1.5 text-white/70 hover:text-white transition">بوابة الإشراف</a>
             </div>
         </div>
-        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 43</span></div>
+        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 44</span></div>
     </footer>
 
-    <script src="cloud-config.js?v=43" defer></script>
-    <script src="cloud.js?v=43" defer></script>
-    <script src="app.js?v=43" defer></script>
+    <script src="cloud-config.js?v=44" defer></script>
+    <script src="cloud.js?v=44" defer></script>
+    <script src="app.js?v=44" defer></script>
     <script>
         (function () {
             var btn = document.getElementById('menuBtn');

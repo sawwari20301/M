@@ -179,6 +179,181 @@
         return 'من ' + timeLabel(s.startsAt) + ' إلى ' + timeLabel(e);
     }
     /* فرع الصالون (إن حُدّد) */
+    /* ============ بوابة الدفع: اشتراك الجلسة (تحويل بنكي + إيصال) ============ */
+    function salonPrice(salon) {
+        var n = Number((salon || {}).price);
+        return (isFinite(n) && n > 0) ? Math.round(n) : 0;
+    }
+    function arPrice(n) { return num(n) + ' ر.س'; }
+    function payInfo(d) {
+        var p = (d && d.pay) || {};
+        return {
+            bank: p.bank || '', holder: p.holder || '', iban: p.iban || '',
+            account: p.account || '', note: p.note || '', whatsapp: p.whatsapp || ''
+        };
+    }
+    function payReady(d) { var p = payInfo(d); return !!(p.iban || p.account); }
+    function copyToClipboard(txt) {
+        txt = String(txt || '');
+        if (!txt) return;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(function () { toast('نُسخ: ' + txt, 'ok'); },
+                    function () { toast('لم يُنسخ تلقائياً — انسخه يدوياً.', 'error'); });
+                return;
+            }
+        } catch (e) {}
+        toast('انسخه يدوياً: ' + txt, 'info');
+    }
+    function payStatusLabel(st) {
+        if (st === 'confirmed') return '<span class="text-emerald-700 font-bold">✓ مدفوع ومؤكَّد</span>';
+        if (st === 'rejected') return '<span class="text-red-700 font-bold">✗ رُفض الإيصال</span>';
+        return '<span class="text-amber-700 font-bold">⏳ بانتظار مراجعة الإيصال</span>';
+    }
+    function savePaySettings() {
+        if (!needPerm('bookings', 'الحجوزات')) return;
+        var q = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+        var d = fullDoc();
+        d.pay = {
+            bank: q('payBank'), holder: q('payHolder'), iban: q('payIban'),
+            account: q('payAccount'), note: q('payNote'), whatsapp: q('payWhats')
+        };
+        saveDoc(d); state = null; render();
+        toast('حُفظت بيانات التحويل البنكي', 'ok');
+    }
+    function renderAdminPay(s) {
+        var box = document.getElementById('paySettings');
+        if (!box) return;
+        var d = fullDoc();
+        var p = payInfo(d);
+        box.querySelector('#payBank').value = p.bank;
+        box.querySelector('#payHolder').value = p.holder;
+        box.querySelector('#payIban').value = p.iban;
+        box.querySelector('#payAccount').value = p.account;
+        box.querySelector('#payNote').value = p.note;
+        box.querySelector('#payWhats').value = p.whatsapp;
+        var warn = box.querySelector('#payWarn');
+        if (warn) {
+            var ok = payReady(d);
+            warn.textContent = ok ? '✓ بيانات التحويل جاهزة — الجلسات المدفوعة تعمل.' : '⚠ لا يمكن للأعضاء الدفع قبل إدخال الآيبان أو رقم الحساب.';
+            warn.className = 'text-[11px] ' + (ok ? 'text-emerald-700' : 'text-amber-700');
+        }
+    }
+    /* نافذة الدفع والاشتراك */
+    function payModal(salon, guest, existing) {
+        var d = fullDoc();
+        var p = payInfo(d);
+        var price = salonPrice(salon);
+        if (!payReady(d)) { toast('لم تُضف الإدارة بيانات التحويل البنكي بعد — تواصل معنا.', 'error'); return; }
+        var pic = (existing && existing.receipt) || '';
+        var rows =
+            '<div class="bg-matn-cream border border-matn-sand rounded-2xl p-3 space-y-2 text-xs">' +
+                '<div class="font-bold text-matn-emerald text-sm">💳 المطلوب: ' + arPrice(price) + '</div>' +
+                (p.bank ? '<div>البنك: <strong>' + esc(p.bank) + '</strong></div>' : '') +
+                (p.holder ? '<div>المستفيد: <strong>' + esc(p.holder) + '</strong></div>' : '') +
+                (p.iban ? '<div class="flex flex-wrap items-center gap-2">الآيبان: <strong class="matn-code" dir="ltr">' + esc(p.iban) + '</strong>' +
+                    '<button type="button" data-action="copy" data-copy="' + esc(p.iban) + '" class="text-[10px] font-bold text-matn-emerald border border-matn-sand rounded-lg px-2 py-0.5">نسخ</button></div>' : '') +
+                (p.account ? '<div class="flex flex-wrap items-center gap-2">رقم الحساب: <strong class="matn-code" dir="ltr">' + esc(p.account) + '</strong>' +
+                    '<button type="button" data-action="copy" data-copy="' + esc(p.account) + '" class="text-[10px] font-bold text-matn-emerald border border-matn-sand rounded-lg px-2 py-0.5">نسخ</button></div>' : '') +
+                (p.note ? '<div class="text-[11px] text-matn-muted whitespace-pre-line">' + esc(p.note) + '</div>' : '') +
+                '<div class="text-[10px] text-matn-muted">حوّل المبلغ ثم ارفع صورة الإيصال — يتفعّل اشتراكك بعد تأكيد الإدارة.</div>' +
+            '</div>';
+        modal({
+            title: 'الاشتراك في الجلسة — تحويل بنكي',
+            body: rows +
+                '<label class="matn-field"><span>رقم العملية / اسم المُحوِّل (اختياري)</span><input class="matn-input" id="pyRef" type="text" value="' + esc((existing && existing.ref) || '') + '" placeholder="مثال: 123456789"></label>' +
+                '<label class="matn-field"><span>صورة الإيصال (مطلوبة)</span></label>' +
+                '<input type="file" id="pyFile" accept="image/*" class="hidden">' +
+                '<div class="flex flex-wrap items-center gap-3">' +
+                    '<button type="button" id="pyPick" class="matn-preset">📎 اختر صورة الإيصال</button>' +
+                    '<img id="pyPrev" alt="" class="' + (pic ? '' : 'hidden') + ' w-20 h-20 rounded-xl object-cover border border-matn-sand" src="' + esc(pic) + '">' +
+                '</div>' +
+                '<p id="pyMsg" class="text-xs mt-1 ' + (existing && existing.payStatus === 'pending' ? 'text-amber-700' : '') + '">' +
+                    (existing && existing.payStatus === 'pending' ? 'إيصالك السابق قيد المراجعة — يمكنك رفع إيصال أحدث.' : '') + '</p>',
+            footer: '<button type="button" id="pyGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">أرسل الإيصال وفعّل الاشتراك</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                var msg = w.querySelector('#pyMsg');
+                var prev = w.querySelector('#pyPrev');
+                w.querySelector('#pyPick').addEventListener('click', function () { w.querySelector('#pyFile').click(); });
+                w.querySelector('#pyFile').addEventListener('change', function (ev) {
+                    var f = ev.target.files && ev.target.files[0];
+                    if (!f) return;
+                    msg.textContent = 'جارٍ تجهيز الإيصال…'; msg.className = 'text-xs mt-1 text-matn-muted';
+                    compressImage(f, 900, 0.7).then(function (url) {
+                        pic = url; prev.src = url; prev.classList.remove('hidden');
+                        msg.textContent = 'جهّزنا الإيصال — اضغط الإرسال.'; msg.className = 'text-xs mt-1 text-emerald-700';
+                    }).catch(function () { msg.textContent = 'تعذّر قراءة الصورة.'; msg.className = 'text-xs mt-1 text-red-700'; });
+                });
+                w.querySelectorAll('[data-action="copy"]').forEach(function (b) {
+                    b.addEventListener('click', function () { copyToClipboard(b.getAttribute('data-copy')); });
+                });
+                w.querySelector('#pyGo').addEventListener('click', function () {
+                    if (!pic) { msg.textContent = 'ارفع صورة الإيصال أولاً.'; msg.className = 'text-xs mt-1 text-red-700'; return; }
+                    var ref = w.querySelector('#pyRef').value.trim();
+                    closeModal();
+                    if (existing) {
+                        change(function (st) {
+                            var b = (st.myBookings || {})[salon.id];
+                            if (!b) return;
+                            b.receipt = pic; b.ref = ref; b.payStatus = 'pending';
+                            b.amount = price; b.paidAt = new Date().toISOString();
+                            st.booking = b;
+                        });
+                        toast('حُدِّث الإيصال — بانتظار تأكيد الإدارة', 'ok');
+                        return;
+                    }
+                    var g = guest || { name: '', email: '', phone: '' };
+                    doBook(g.name, g.email, g.phone, { amount: price, receipt: pic, ref: ref, payStatus: 'pending' });
+                    var ds = fullDoc();
+                    var admins = adminsOf(ds, ds.authUser);
+                    var txt = '💳 اشتراك جديد بانتظار التأكيد' +
+                        '\nالجلسة: ' + (salon.title || '') +
+                        '\nالمبلغ: ' + arPrice(price) +
+                        '\nالعضو: ' + ((ds.accounts[ds.authUser] || {}).name || ds.authUser) +
+                        (ref ? ('\nرقم العملية: ' + ref) : '') +
+                        '\nراجع الإيصال من: لوحة الإدارة ← الحجوزات';
+                    var at = new Date().toISOString();
+                    if (admins.length) {
+                        ds.notices = ds.notices || [];
+                        admins.forEach(function (t) {
+                            ds.notices.unshift({ id: 'nt-' + rnd(6), to: t, text: txt, kind: 'pay', from: ds.authUser, at: at, read: false });
+                        });
+                        saveDoc(ds); state = null; load(); render();
+                    }
+                });
+            }
+        });
+    }
+    function reviewPayment(uname, sid, ok) {
+        if (!needPerm('bookings', 'الحجوزات')) return;
+        var d = fullDoc();
+        var a = d.accounts[uname];
+        var b = a && a.bookings ? a.bookings[sid] : null;
+        if (!b) return;
+        confirmBox(ok ? 'تأكيد الدفع' : 'رفض الإيصال', ok
+            ? ('سيُفعَّل اشتراك «' + a.name + '» في الجلسة ويُثبَّت مقعده (' + arPrice(b.amount || 0) + ').')
+            : ('سيُرفض إيصال «' + a.name + '» ويُفرَّغ مقعده، ويستطيع رفع إيصال جديد.'), function () {
+            var d2 = fullDoc();
+            var b2 = d2.accounts[uname].bookings[sid];
+            b2.payStatus = ok ? 'confirmed' : 'rejected';
+            b2.reviewedAt = new Date().toISOString();
+            if (ok) {
+                d2.accounts[uname].points = (d2.accounts[uname].points || 0) + 20;
+                d2.accounts[uname].ledger = d2.accounts[uname].ledger || [];
+                d2.accounts[uname].ledger.unshift({ reason: 'اشتراك مؤكد في جلسة صالون', points: 20, at: new Date().toISOString() });
+            } else {
+                delete d2.accounts[uname].bookings[sid];
+            }
+            var txt = ok ? ('✅ تأكيد اشتراكك في «' + (b.title || '') + '» — أُضيفت 20 نقطة لرصيدك.')
+                         : ('✗ رُفض إيصال اشتراكك في «' + (b.title || '') + '» — يمكنك رفع إيصال جديد.');
+            var at = new Date().toISOString();
+            d2.notices.unshift({ id: 'nt-' + rnd(6), to: uname, text: txt, kind: 'pay', from: d2.authUser, at: at, read: false });
+            d2.messages.unshift({ id: 'ms-' + rnd(6), from: d2.authUser, to: uname, text: txt, at: at, read: false, system: true });
+            saveDoc(d2); state = null; load(); render();
+            toast(ok ? 'فُعّل الاشتراك' : 'رُفض الإيصال', 'ok');
+        }, ok ? 'تأكيد' : 'رفض');
+    }
+
     /* اسم الصالون الذي سيقيم الجلسة (المقر → الفرع → المكان) */
     function salonName(s, salon) {
         salon = salon || (s && s.salon) || {};
@@ -1124,6 +1299,8 @@
                             return '<option value="' + mm + '"' + ((v.durationMin || 90) === mm ? ' selected' : '') + '>' + durLabel(mm) + '</option>';
                         }).join('') +
                     '</select></label>' +
+                    '<label class="matn-field"><span>💳 سعر الاشتراك (ر.س) — اكتب 0 لجلسة مجانية</span><input class="matn-input" id="sfPrice" type="number" min="0" step="1" value="' + (salonPrice(v) || 0) + '"></label>' +
+                    '<p class="text-[10px] text-matn-muted sm:col-span-2 -mt-1">إذا كان السعر أكبر من صفر: العضو يحوّل المبلغ بنكياً ويرفع الإيصال، ويتفعّل اشتراكه بعد تأكيدك من قسم «الحجوزات».</p>' +
                     '<label class="matn-field"><span>🏙 المدينة</span><select class="matn-input" id="sfCity">' + citiesOptions(v.city) + '</select></label>' +
                     '<label class="matn-field"><span>📍 مكانه (الفرع) — حضوري أو كليهما</span><select class="matn-input" id="sfBranch">' +
                         '<option value="">بدون فرع محدد</option>' +
@@ -1523,7 +1700,12 @@
     function bookSeat() {
         if (needsLogin()) { requireLogin('حجز مقعد في الصالون'); return; }
         var s = load();
-        if (s.booking) { cancelBooking(); return; }
+        var salon0 = s.salon || {};
+        var price0 = salonPrice(salon0);
+        if (s.booking) {
+            if (price0 > 0 && s.booking.payStatus === 'pending') { payModal(salon0, null, s.booking); return; }
+            cancelBooking(); return;
+        }
         if (s.seatsLeft <= 0) { toast('اكتمل عدد مقاعد الجلسة', 'error'); return; }
 
         var g = readGuest();
@@ -1563,13 +1745,15 @@
                     }
                     saveGuest(name, email, phone);
                     closeModal();
-                    doBook(name, email, phone);
+                    var sal = (load().salon) || {};
+                    if (salonPrice(sal) > 0) payModal(sal, { name: name, email: email, phone: phone });
+                    else doBook(name, email, phone);
                 });
             }
         });
     }
 
-    function doBook(name, email, phone) {
+    function doBook(name, email, phone, pay) {
         if (CLOUD) {
             return window.MatnCloud.bookSeat(name, email).then(function (code) {
                 return refresh().then(function () {
@@ -1590,7 +1774,12 @@
             var bk = st.myBookings || (st.myBookings = {});
             bk[salon.id] = {
                 code: code, at: new Date().toISOString(), salonId: salon.id,
-                title: salon.title, when: salon.when, where: salon.where, phone: ph
+                title: salon.title, when: salon.when, where: salon.where, phone: ph,
+                amount: pay ? pay.amount : 0,
+                payStatus: pay ? (pay.payStatus || 'pending') : 'free',
+                receipt: pay ? (pay.receipt || '') : '',
+                ref: pay ? (pay.ref || '') : '',
+                paidAt: pay ? new Date().toISOString() : ''
             };
             st.booking = bk[salon.id];
         });
@@ -1598,7 +1787,7 @@
             var dd = fullDoc();
             if (dd.authUser && dd.accounts[dd.authUser]) { dd.accounts[dd.authUser].phone = ph; saveDoc(dd); }
         }
-        toast('تم تأكيد حجزك — رقم التذكرة ' + code, 'ok');
+        toast(pay ? 'رفعنا إيصالك — يبقى المقعد محجوزاً حتى تأكيد الإدارة' : ('تم تأكيد حجزك — رقم التذكرة ' + code), 'ok');
     }
     function cancelBooking() {
         if (CLOUD) {
@@ -1934,12 +2123,19 @@
 
         var btn = document.getElementById('bookBtn');
         if (btn) {
-            if (s.booking) {
-                btn.textContent = '✓ مقعدك محجوز — إلغاء الحجز';
+            var bPrice = salonPrice(s.salon || {});
+            if (s.booking && bPrice > 0 && s.booking.payStatus === 'pending') {
+                btn.textContent = '⏳ إيصالك قيد المراجعة — اضغط لتحديث الإيصال';
+                btn.className = 'w-full bg-amber-50 border border-amber-300 text-amber-800 py-3.5 rounded-xl font-bold text-sm shadow-sm transition';
+            } else if (s.booking) {
+                btn.textContent = bPrice > 0 ? '✓ اشتراكك مفعّل — إلغاء' : '✓ مقعدك محجوز — إلغاء الحجز';
                 btn.className = 'w-full bg-white hover:bg-matn-cream border border-matn-sand text-matn-charcoal py-3.5 rounded-xl font-bold text-sm shadow-sm transition';
             } else if (s.seatsLeft <= 0) {
                 btn.textContent = 'اكتمل عدد المقاعد';
                 btn.className = 'w-full bg-matn-muted/40 text-white py-3.5 rounded-xl font-bold text-sm cursor-not-allowed';
+            } else if (salonPrice(s.salon || {}) > 0) {
+                btn.textContent = '💳 ادفع واشترك في الجلسة — ' + arPrice(salonPrice(s.salon || {}));
+                btn.className = 'w-full bg-matn-emerald hover:bg-matn-emeraldDark text-white py-3.5 rounded-xl font-bold text-sm shadow transition';
             } else {
                 btn.textContent = 'تأكيد حجز مقعدي بالصالون مجاناً (مشترك)';
                 btn.className = 'w-full bg-matn-emerald hover:bg-matn-emeraldDark text-white py-3.5 rounded-xl font-bold text-sm shadow transition';
@@ -1951,7 +2147,11 @@
                 ticket.classList.remove('hidden');
                 ticket.innerHTML =
                     '<div class="p-4 rounded-2xl border border-matn-gold/50 bg-matn-creamDark/60 text-xs space-y-2">' +
-                        '<div class="font-bold text-matn-emerald text-sm">✓ مقعدك محجوز</div>' +
+                        '<div class="font-bold text-matn-emerald text-sm">' + (s.booking.payStatus === 'pending' ? '⏳ حجزك محفوظ — بانتظار تأكيد الدفع' : (s.booking.payStatus === 'confirmed' ? '✓ اشتراكك مفعّل ومقعدك محجوز' : '✓ مقعدك محجوز')) + '</div>' +
+                        ((s.booking.amount || 0) > 0 ? ('<div class="flex justify-between"><span class="text-matn-muted">الاشتراك</span><strong>' + arPrice(s.booking.amount) + '</strong></div>' +
+                            '<div class="flex justify-between"><span class="text-matn-muted">حالة الدفع</span><span>' + payStatusLabel(s.booking.payStatus) + '</span></div>' +
+                            (s.booking.receipt ? ('<div class="flex items-center gap-2"><span class="text-matn-muted">الإيصال:</span><img src="' + esc(safeImg(s.booking.receipt)) + '" data-zoom="' + esc(safeImg(s.booking.receipt)) + '" class="w-12 h-12 rounded-lg object-cover border border-matn-sand" alt="إيصال"></div>') : '') +
+                            (s.booking.ref ? ('<div class="flex justify-between"><span class="text-matn-muted">رقم العملية</span><span>' + esc(s.booking.ref) + '</span></div>') : '')) : '') +
                         '<div class="flex justify-between"><span class="text-matn-muted">رقم التذكرة</span><span class="matn-code font-bold">' + esc(s.booking.code) + '</span></div>' +
                         '<div class="flex justify-between"><span class="text-matn-muted">الجلسة</span><strong>' + esc(s.booking.title) + '</strong></div>' +
                         '<div class="flex justify-between"><span class="text-matn-muted">الموعد</span><strong>' + esc(s.booking.when) + '</strong></div>' +
@@ -2081,6 +2281,12 @@
         });
 
         /* المدينة ووقت اللقاء ومدته والفرع */
+        document.querySelectorAll('[data-session-price]').forEach(function (el) {
+            var pr = salonPrice(salon);
+            var row = el.parentElement;
+            if (pr > 0) { el.textContent = arPrice(pr) + ' (تحويل بنكي)'; el.className = 'text-matn-emerald font-bold'; if (row) row.classList.remove('hidden'); }
+            else { el.textContent = 'مجاني للأعضاء'; el.className = 'text-emerald-700 font-bold'; }
+        });
         document.querySelectorAll('[data-session-salon]').forEach(function (el) {
             el.textContent = salonName(s, salon);
         });
@@ -2261,13 +2467,19 @@
                     var b = a.bookings[sid];
                     var wl = waLink(a.phone, reminderText(salonById(D, b.salonId) || salon));
                     var ses = salonById(D, b.salonId);
-                    rows.push('<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
+                    var pay = (b.amount || 0) > 0;
+                    rows.push('<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60 ' + (pay && b.payStatus === 'pending' ? 'bg-amber-50/60' : '') + '">' +
                         '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
                             (a.phone ? ' <span class="text-[10px] text-matn-muted" dir="ltr">' + esc(a.phone) + '</span>' : ' <span class="text-[10px] text-red-700">بلا رقم</span>') + '</span>' +
                         '<span class="flex flex-wrap items-center gap-3">' +
                             (ses ? ('<span class="text-matn-muted">' + esc(ses.title).slice(0, 22) + '</span>') : '') +
                             '<span class="matn-code">' + esc(b.code) + '</span>' +
                             '<span class="text-matn-muted">' + esc(fmtDate(b.at)) + '</span>' +
+                            (pay ? ('<span class="font-bold text-matn-emerald">' + arPrice(b.amount) + '</span>' + payStatusLabel(b.payStatus)) : '') +
+                            (pay && b.ref ? ('<span class="text-[10px] text-matn-muted">عملية: ' + esc(clip(b.ref, 16)) + '</span>') : '') +
+                            (pay && b.receipt ? ('<img src="' + esc(safeImg(b.receipt)) + '" data-zoom="' + esc(safeImg(b.receipt)) + '" class="w-10 h-10 rounded-lg object-cover border border-matn-sand" alt="إيصال" title="اضغط مطوّلاً للتكبير">') : '') +
+                            (pay && b.payStatus !== 'confirmed' ? ('<button type="button" data-action="pay-confirm" data-uname="' + esc(u) + '" data-sid="' + esc(b.salonId) + '" class="bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-bold">✅ تأكيد الدفع</button>') : '') +
+                            (pay && b.payStatus !== 'rejected' && b.payStatus !== 'confirmed' ? ('<button type="button" data-action="pay-reject" data-uname="' + esc(u) + '" data-sid="' + esc(b.salonId) + '" class="bg-white border border-red-200 text-red-700 px-2.5 py-1.5 rounded-lg font-bold">✗ رفض</button>') : '') +
                             (wl ? '<a href="' + esc(wl) + '" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-2.5 py-1.5 rounded-lg font-bold">تذكير واتساب</a>' : '') +
                         '</span></li>');
                     });
@@ -2380,6 +2592,7 @@
         renderArchive(s);
         renderHomePartners(s);
         renderBookPage(s);
+        renderAdminPay(s);
         renderMyDiary(s);
         renderDiaryWall(s);
         renderBell(s);
@@ -3985,7 +4198,11 @@
         var el = e.target.closest('[data-action]');
         if (!el) return;
         var a = el.getAttribute('data-action');
-        if (a === 'book') { load().booking ? cancelBooking() : bookSeat(); }
+        if (a === 'book') { bookSeat(); }
+        else if (a === 'copy') copyToClipboard(el.getAttribute('data-copy'));
+        else if (a === 'pay-confirm') reviewPayment(el.getAttribute('data-uname'), el.getAttribute('data-sid'), true);
+        else if (a === 'pay-reject') reviewPayment(el.getAttribute('data-uname'), el.getAttribute('data-sid'), false);
+        else if (a === 'save-pay') savePaySettings();
         else if (a === 'gift') openGift();
         else if (a === 'add-partner') openAddPartner();
         else if (a === 'generate-code') openGenCode();
