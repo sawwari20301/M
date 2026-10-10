@@ -2666,7 +2666,6 @@
                     (b.author ? '<div class="text-xs text-matn-gold mt-1">✍ ' + esc(b.author) + '</div>' : '') +
                     (b.desc ? '<p class="text-xs text-matn-muted leading-relaxed mt-2 whitespace-pre-line">' + esc(b.desc) + '</p>' : '') +
                     (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-3 text-xs font-bold text-matn-emerald border border-matn-sand rounded-xl px-4 py-2 hover:border-matn-gold transition">تفاصيل الكتاب ↗</a>' : '') +
-                    '<a href="book.html" class="block w-full text-right mt-3 bg-white border border-dashed border-matn-sand hover:border-matn-gold rounded-xl px-4 py-2.5 text-[11px] font-bold text-matn-emerald transition">💬 آراء الأعضاء في الكتاب ›</a>' +
                 '</div></div>';
     }
 
