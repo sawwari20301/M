@@ -24,6 +24,9 @@
     /* ---------- الصلاحيات ---------- */
     var PERMS = [
         { key: 'salons', label: 'إدارة الصالونات' },
+        { key: 'branches', label: 'فروعنا' },
+        { key: 'book', label: 'كتاب الأسبوع' },
+        { key: 'engage', label: 'النقاش والتصويت' },
         { key: 'members', label: 'إدارة الأعضاء والصلاحيات' },
         { key: 'bookings', label: 'الحجوزات' },
         { key: 'partners', label: 'الشركاء' },
@@ -105,6 +108,30 @@
     function hideZoom() {
         var ov = document.getElementById('matnZoom');
         if (ov) ov.classList.remove('is-on');
+    }
+
+    /* ---------- فروعنا: كل مدن المملكة ---------- */
+    var SA_CITIES = ('الرياض,الخرج,الدرعية,المزاحمية,ضرما,حريملاء,ثادق,الغاط,شقراء,المجمعة,الزلفي,الدوادمي,الأفلاج,وادي الدواسر,' +
+        'حوطة بني تميم,السليل,الدلم,رماح,القويعية,الحريق,حوطة سدير,روضة سدير,تمير,جلاجل,' +
+        'جدة,مكة المكرمة,الطائف,رابغ,الليث,القنفذة,بحرة,خليص,الجموم,الخرمة,تربة,رنية,' +
+        'المدينة المنورة,ينبع,العلا,بدر,خيبر,الحناكية,المهد,' +
+        'الدمام,الخبر,الظهران,الأحساء,الهفوف,المبرز,الجبيل,القطيف,سيهات,صفوى,رأس تنورة,بقيق,الخفجي,حفر الباطن,النعيرية,قرية العليا,' +
+        'بريدة,عنيزة,الرس,البكيرية,المذنب,البدائع,رياض الخبراء,عيون الجواء,الشماسية,' +
+        'حائل,بقعاء,الشنان,الغزالة,موقق,السليمي,الحائط,سميراء,' +
+        'تبوك,ضباء,الوجه,أملج,حقل,تيماء,البدع,' +
+        'أبها,خميس مشيط,بيشة,محايل عسير,رجال ألمع,النماص,تنومة,ظهران الجنوب,سراة عبيدة,أحد رفيدة,بلقرن,تثليث,' +
+        'جازان,صبيا,أبو عريش,صامطة,فرسان,بيش,الدرب,العارضة,' +
+        'نجران,شرورة,حبونا,بدر الجنوب,يدمة,ثار,' +
+        'الباحة,بلجرشي,المندق,المخواة,العقيق,القرى,' +
+        'سكاكا,عرعر,القريات,طريف,دومة الجندل').split(',');
+    var BRANCH_MODES = [
+        { key: 'in-person', label: 'حضوري' },
+        { key: 'online', label: 'عن بعد' },
+        { key: 'hybrid', label: 'حضوري وعن بعد' }
+    ];
+    function brModeLabel(k) {
+        for (var i = 0; i < BRANCH_MODES.length; i++) if (BRANCH_MODES[i].key === k) return BRANCH_MODES[i].label;
+        return BRANCH_MODES[0].label;
     }
 
     /* ---------- التذكير بالموعد ---------- */
@@ -271,7 +298,16 @@
             seatsLeft: SESSION.seats,
             partners: SEED_PARTNERS.slice(),
             giftCodes: JSON.parse(JSON.stringify(SEED_CODES)),
-            recording: { title: '', url: '' }
+            recording: { title: '', url: '' },
+            branches: [{
+                id: 'br-yasmin', city: 'الرياض', name: 'فرع الياسمين',
+                place: 'صالون مَتن - فرع الياسمين',
+                link: 'https://www.google.com/maps/search/?api=1&query=24.816944,46.636111',
+                mode: 'hybrid', activity: 'صالونات القراءة والحوار', featured: true, at: new Date().toISOString()
+            }],
+            book: { title: '', author: '', cover: '', desc: '', url: '' },
+            posts: [],
+            poll: null
         };
     }
     function doc() {
@@ -356,12 +392,23 @@
         if (dirty) saveDoc(d);
         return d;
     }
+    /* ترحيل الفروع والكتاب والنقاش */
+    function migrateExtra(d) {
+        var dirty = false;
+        if (!Array.isArray(d.branches)) { d.branches = seedDoc().branches; dirty = true; }
+        if (!d.book || typeof d.book !== 'object') { d.book = { title: '', author: '', cover: '', desc: '', url: '' }; dirty = true; }
+        if (!Array.isArray(d.posts)) { d.posts = []; dirty = true; }
+        if (typeof d.poll === 'undefined') { d.poll = null; dirty = true; }
+        if (dirty) saveDoc(d);
+        return d;
+    }
+    function fullDoc() { return migrateExtra(migrateAll(doc())); }
 
     var state = null;
 
     function load() {
         if (state) return state;
-        var d = migrateAll(doc());
+        var d = fullDoc();
         var acc = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
         var feat = featuredSalon(d) || {
             id: 'salon-1', title: SESSION.title, when: SESSION.when, where: SESSION.where,
@@ -381,6 +428,10 @@
             salons: d.salons || [],
             seatsLeft: seatsLeftOf(d, feat),
             partners: Array.isArray(d.partners) && d.partners.length ? d.partners : SEED_PARTNERS.slice(),
+            branches: d.branches || [],
+            book: d.book || { title: '', author: '', cover: '', desc: '', url: '' },
+            posts: d.posts || [],
+            poll: d.poll || null,
             giftCodes: d.giftCodes && typeof d.giftCodes === 'object' ? d.giftCodes : JSON.parse(JSON.stringify(SEED_CODES)),
             recording: d.recording && typeof d.recording === 'object' ? d.recording : { title: '', url: '' },
             booking: acc ? (acc.booking || null) : null,
@@ -396,6 +447,10 @@
         d.partners = state.partners;
         d.giftCodes = state.giftCodes;
         d.recording = state.recording;
+        d.branches = state.branches;
+        d.book = state.book;
+        d.posts = state.posts;
+        d.poll = state.poll;
         var u = state.user && state.user.username;
         if (u && d.accounts[u]) {
             d.accounts[u].points = state.user.points;
@@ -535,7 +590,7 @@
     function bookedSalon() {
         var s = load();
         if (!s.booking) return null;
-        return salonById(migrateAll(doc()), s.booking.salonId) || s.salon;
+        return salonById(fullDoc(), s.booking.salonId) || s.salon;
     }
     /* تفعيل إشعار المتصفح (يحتاج إبقاء الصفحة مفتوحة) */
     function armBrowserReminder() {
@@ -562,7 +617,7 @@
 
     /* صف التذكير عبر واتساب داخل بطاقة المحجوز */
     function waRemindRow(salon) {
-        var d = migrateAll(doc());
+        var d = fullDoc();
         var s = load();
         var mine = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
         var phone = (mine && mine.phone) || (s.booking && s.booking.phone) || '';
@@ -590,7 +645,7 @@
         var el = document.getElementById('waPhone');
         var p = el ? el.value.trim() : '';
         if (!waNumber(p)) { toast('أدخل رقماً صحيحاً — مثال: 0555555555', 'error'); return; }
-        var d = migrateAll(doc());
+        var d = fullDoc();
         var u = d.authUser;
         if (u && d.accounts[u]) d.accounts[u].phone = p;
         if (u && d.accounts[u] && d.accounts[u].booking) d.accounts[u].booking.phone = p;
@@ -820,7 +875,7 @@
                     var m = w.querySelector('#sfMsg');
                     if (!t) { m.textContent = 'اكتب عنوان الجلسة.'; m.className = 'text-xs text-red-700'; return; }
                     if (!(cap > 0)) { m.textContent = 'أدخل عدد مقاعد صحيحاً.'; m.className = 'text-xs text-red-700'; return; }
-                    var doc2 = migrateAll(doc());
+                    var doc2 = fullDoc();
                     var startISO = whenISO(w.querySelector('#sfStart').value);
                     var whenTxt = w.querySelector('#sfWhen').value.trim();
                     if (!whenTxt && startISO) whenTxt = arabicWhen(startISO);
@@ -856,7 +911,7 @@
 
     function setFeaturedSalon(id) {
         if (!needPerm('salons', 'إدارة الصالونات')) return;
-        var d = migrateAll(doc());
+        var d = fullDoc();
         d.salons.forEach(function (s) { s.featured = (s.id === id); });
         saveDoc(d); refresh();
         toast('صار هذا الصالون هو القادم — يظهر في الرئيسية والحجز', 'ok');
@@ -864,7 +919,7 @@
 
     function deleteSalon(id) {
         if (!needPerm('salons', 'إدارة الصالونات')) return;
-        var d = migrateAll(doc());
+        var d = fullDoc();
         if (d.salons.length <= 1) { toast('لا يمكن حذف الصالون الأخير — الموقع يحتاج صالوناً واحداً على الأقل.', 'error'); return; }
         var s = salonById(d, id);
         if (!s) return;
@@ -872,7 +927,7 @@
         Object.keys(d.accounts).forEach(function (u) { var b = d.accounts[u].booking; if (b && b.salonId === id) booked++; });
         confirmBox('حذف الصالون', 'سيُحذف «' + s.title + '»' +
             (booked ? ' — وله ' + num(booked) + ' حجز قائم سيُلغى وتُفرَّغ مقاعده' : '') + '. لا يمكن التراجع.', function () {
-            var d2 = migrateAll(doc());
+            var d2 = fullDoc();
             if (s.featured) {
                 var other = d2.salons.filter(function (x) { return x.id !== id; })[0];
                 if (other) other.featured = true;
@@ -910,7 +965,7 @@
                     var pts = parseInt(w.querySelector('#amPoints').value, 10) || 0;
                     if (!uname) { m.textContent = 'اسم المستخدم يجب أن يكون 3–24 حرفاً (حروف وأرقام ونقطة أو شرطة).'; m.className = 'text-xs text-red-700'; return; }
                     if (!pass || String(pass).length < 6) { m.textContent = 'كلمة المرور 6 أحرف على الأقل.'; m.className = 'text-xs text-red-700'; return; }
-                    var d = migrateAll(doc());
+                    var d = fullDoc();
                     if (d.accounts[uname]) { m.textContent = 'اسم المستخدم محجوز — اختر غيره.'; m.className = 'text-xs text-red-700'; return; }
                     sha256(String(pass)).then(function (hash) {
                         var perms = role === 'manager' ? ALL_PERMS.slice() : [];
@@ -932,7 +987,7 @@
 
     function togglePerm(uname, perm) {
         if (!needPerm('members', 'إدارة الصلاحيات')) return;
-        var d = migrateAll(doc());
+        var d = fullDoc();
         var a = d.accounts[uname];
         if (!a) return;
         if (a.super) { toast('المشرف العام يملك كل الصلاحيات دائماً.', 'error'); return; }
@@ -945,7 +1000,7 @@
 
     function setAllPerms(uname, on) {
         if (!needPerm('members', 'إدارة الصلاحيات')) return;
-        var d = migrateAll(doc());
+        var d = fullDoc();
         var a = d.accounts[uname];
         if (!a) return;
         if (a.super) { toast('المشرف العام يملك كل الصلاحيات دائماً.', 'error'); return; }
@@ -1102,7 +1157,7 @@
         var needEmail = !!(CLOUD && window.MatnCloud && window.MatnCloud.emailTickets);
 
         var g0 = readGuest();
-        var d0 = migrateAll(doc());
+        var d0 = fullDoc();
         var acc0 = d0.authUser ? d0.accounts[d0.authUser] : null;
         var phone = (acc0 && acc0.phone) || g0.phone || '';
         modal({
@@ -1165,7 +1220,7 @@
             };
         });
         if (ph) {
-            var dd = migrateAll(doc());
+            var dd = fullDoc();
             if (dd.authUser && dd.accounts[dd.authUser]) { dd.accounts[dd.authUser].phone = ph; saveDoc(dd); }
         }
         toast('تم تأكيد حجزك — رقم التذكرة ' + code, 'ok');
@@ -1818,11 +1873,186 @@
 
         /* الصالونات */
         renderSalons(s);
+        renderBranches(s);
+        renderBook(s);
+        renderPosts(s);
+        renderPoll(s);
+        renderAdminExtra(s);
 
         /* إظهار الأقسام حسب صلاحيات المستخدم — بعد منطق البوابة ليكون هو الفصل */
         document.querySelectorAll('[data-need-perm]').forEach(function (el) {
             el.classList.toggle('hidden', !can(el.getAttribute('data-need-perm')));
         });
+    }
+
+    /* قائمة «فروعنا» + بطاقة الموقع (دبوس بلا خريطة مضمنة) */
+    function renderBranches(s) {
+        var list = s.branches || [];
+        var feat = list.filter(function (b) { return b.featured; })[0] || list[0] || null;
+        document.querySelectorAll('[data-branches-menu]').forEach(function (el) {
+            el.innerHTML = list.length ? list.map(function (b) {
+                var lk = safeUrl(b.link);
+                return '<a href="' + esc(lk || '#') + '"' + (lk ? ' target="_blank" rel="noopener"' : '') + ' class="block px-3 py-2.5 rounded-xl hover:bg-matn-creamDark transition">' +
+                    '<div class="flex items-center justify-between gap-2">' +
+                        '<span class="font-bold text-matn-emerald text-xs">' + esc(b.name || b.city) + '</span>' +
+                        '<span class="text-[10px] bg-matn-creamDark border border-matn-sand rounded-full px-2 py-0.5 shrink-0">' + brModeLabel(b.mode) + '</span>' +
+                    '</div>' +
+                    '<div class="text-[10px] text-matn-muted mt-0.5">' + esc(b.city) + (b.place ? (' · ' + esc(b.place)) : '') + '</div>' +
+                    (b.activity ? '<div class="text-[10px] text-matn-muted">' + esc(b.activity) + '</div>' : '') +
+                    (lk ? '<div class="text-[10px] font-bold text-matn-emerald mt-1">📍 افتح الموقع على الخريطة ↗</div>' : '') +
+                '</a>';
+            }).join('') : '<div class="px-3 py-3 text-xs text-matn-muted">لا توجد فروع بعد.</div>';
+        });
+        var card = document.getElementById('branchCard');
+        if (card) {
+            if (feat) {
+                var lk2 = safeUrl(feat.link);
+                card.classList.remove('hidden');
+                card.innerHTML = '<h2 class="font-bold font-amiri text-lg text-matn-emerald flex items-center gap-2">' +
+                        '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-matn-gold shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>' +
+                        'موقع الفرع' +
+                    '</h2>' +
+                    '<p class="text-xs text-matn-muted mt-1">' + esc(feat.name || '') + ' · ' + esc(feat.city) + (feat.place ? (' — ' + esc(feat.place)) : '') + '</p>' +
+                    '<p class="text-[11px] text-matn-muted mt-1">' + brModeLabel(feat.mode) + (feat.activity ? (' · ' + esc(feat.activity)) : '') + '</p>' +
+                    (lk2
+                        ? '<a href="' + esc(lk2) + '" target="_blank" rel="noopener" class="inline-block mt-4 text-xs font-bold text-matn-emerald bg-matn-creamDark border border-matn-sand px-4 py-2.5 rounded-xl hover:border-matn-gold transition">📍 افتح الموقع على خرائط Google ↗</a>'
+                        : '<p class="text-[11px] text-amber-700 mt-3">لم يُضف رابط موقع لهذا الفرع بعد.</p>') +
+                    (list.length > 1 ? '<p class="text-[11px] text-matn-muted mt-3">لدينا ' + num(list.length) + ' فروع — اختر «📍 فروعنا» أعلى الصفحة.</p>' : '');
+            } else card.classList.add('hidden');
+        }
+    }
+
+    /* كتاب الأسبوع */
+    function renderBook(s) {
+        var box = document.getElementById('bookBox');
+        if (!box) return;
+        var b = s.book || {};
+        if (!b.title && !b.cover) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        var cv = safeImg(b.cover);
+        var lk = safeUrl(b.url);
+        box.innerHTML = '<div class="flex items-start gap-4">' +
+                (cv ? '<div class="shrink-0"><img src="' + esc(cv) + '" data-zoom="' + esc(cv) + '" alt="غلاف الكتاب" class="matn-poster"><div class="text-[9px] text-matn-muted mt-1 leading-tight text-left">اضغط مطوّلاً للتكبير</div></div>' : '') +
+                '<div class="min-w-0 flex-1">' +
+                    '<div class="font-amiri text-xl font-bold text-matn-emerald">' + esc(b.title || '') + '</div>' +
+                    (b.author ? '<div class="text-xs text-matn-gold mt-1">✍ ' + esc(b.author) + '</div>' : '') +
+                    (b.desc ? '<p class="text-xs text-matn-muted leading-relaxed mt-2 whitespace-pre-line">' + esc(b.desc) + '</p>' : '') +
+                    (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener" class="inline-block mt-3 text-xs font-bold text-matn-emerald border border-matn-sand rounded-xl px-4 py-2 hover:border-matn-gold transition">تفاصيل الكتاب ↗</a>' : '') +
+                '</div></div>';
+    }
+
+    /* النقاش وآراء الأعضاء */
+    function renderPosts(s) {
+        var list = document.getElementById('postsList');
+        if (!list) return;
+        var items = (s.posts || []).filter(function (p) { return p.topic === postTopic; });
+        list.innerHTML = items.length ? items.map(function (p) {
+            var canDel = (s.signedIn && p.user === s.user.username) || can('engage');
+            return '<li class="border border-matn-sand rounded-2xl p-3 bg-white">' +
+                '<div class="flex items-center justify-between gap-2 text-[11px]">' +
+                    '<span class="font-bold text-matn-emerald">' + esc(p.name || p.user) + '</span>' +
+                    '<span class="text-matn-muted">' + esc(fmtDate(p.at)) + '</span>' +
+                '</div>' +
+                '<p class="text-xs leading-relaxed mt-1.5 whitespace-pre-line">' + esc(p.text) + '</p>' +
+                (canDel ? '<button type="button" data-delpost="' + esc(p.id) + '" class="text-[11px] text-red-700 font-bold mt-1.5 hover:underline">حذف</button>' : '') +
+            '</li>';
+        }).join('') : '<li class="text-xs text-matn-muted py-2">لا توجد مشاركات بعد — كن أول من يكتب رأيه.</li>';
+        list.querySelectorAll('[data-delpost]').forEach(function (b) {
+            b.addEventListener('click', function () { deletePost(b.getAttribute('data-delpost')); });
+        });
+        document.querySelectorAll('[data-action="post-tab"]').forEach(function (b) {
+            var on = b.getAttribute('data-topic') === postTopic;
+            b.className = 'px-3 py-1.5 rounded-xl text-xs font-bold transition ' +
+                (on ? 'bg-matn-emerald text-white' : 'bg-white border border-matn-sand text-matn-muted hover:border-matn-gold');
+        });
+        var hint = document.getElementById('postHint');
+        if (hint) hint.textContent = postTopic === 'book' ? 'رأيك في كتاب الأسبوع' : 'رأيك في جلسة الصالون وموضوعها';
+    }
+
+    /* التصويت */
+    function renderPoll(s) {
+        var box = document.getElementById('pollBox');
+        if (!box) return;
+        var p = s.poll;
+        if (!p || !p.question || !(p.options || []).length) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        var votes = p.votes || {};
+        var total = Object.keys(votes).length;
+        var my = s.signedIn ? votes[s.user.username] : null;
+        box.innerHTML = '<div class="font-bold text-matn-emerald text-sm">🗳 ' + esc(p.question) + '</div>' +
+            '<div class="space-y-2 mt-3">' + p.options.map(function (o) {
+                var n = Object.keys(votes).filter(function (u) { return votes[u] === o.id; }).length;
+                var pct = total ? Math.round(n * 100 / total) : 0;
+                var sel = my === o.id;
+                return '<button type="button" data-vote="' + esc(o.id) + '" class="w-full text-right border rounded-xl px-3 py-2 relative overflow-hidden transition ' +
+                    (sel ? 'border-matn-emerald bg-emerald-50' : 'border-matn-sand bg-white hover:border-matn-gold') + '">' +
+                    '<span class="absolute inset-y-0 right-0 bg-matn-emerald/10" style="width:' + pct + '%"></span>' +
+                    '<span class="relative flex justify-between gap-2 text-xs font-bold"><span>' + (sel ? '✓ ' : '') + esc(o.text) + '</span>' +
+                    '<span class="text-matn-muted shrink-0">' + num(n) + ' · ' + pct + '%</span></span></button>';
+            }).join('') + '</div>' +
+            '<div class="text-[11px] text-matn-muted mt-2">' + (total ? (num(total) + ' مشاركاً') : 'كن أول من يصوّت') + (p.open === false ? ' · التصويت مغلق' : '') + '</div>';
+        box.querySelectorAll('[data-vote]').forEach(function (b) {
+            b.addEventListener('click', function () { votePoll(b.getAttribute('data-vote')); });
+        });
+    }
+
+    /* قوائم اللوحة: الفروع · الكتاب · التصويت والمشاركات */
+    function renderAdminExtra(s) {
+        var bl = document.getElementById('adminBranchList');
+        if (bl) {
+            var list = s.branches || [];
+            bl.innerHTML = list.length ? list.map(function (b) {
+                var lk = safeUrl(b.link);
+                return '<li class="border border-matn-sand rounded-2xl p-4 ' + (b.featured ? 'bg-matn-creamDark' : 'bg-white') + '">' +
+                    '<div class="flex flex-wrap items-start justify-between gap-3">' +
+                        '<div class="min-w-0">' +
+                            '<div class="font-bold text-sm">' + esc(b.name || '') +
+                                ' <span class="text-[10px] bg-matn-gold/25 text-matn-emerald px-1.5 py-0.5 rounded">' + esc(b.city) + '</span>' +
+                                (b.featured ? ' <span class="text-[10px] bg-white border border-matn-sand px-1.5 py-0.5 rounded">المعروض</span>' : '') + '</div>' +
+                            '<div class="text-[11px] text-matn-muted mt-1">' + brModeLabel(b.mode) + (b.activity ? (' · ' + esc(b.activity)) : '') + '</div>' +
+                            '<div class="text-[11px] mt-0.5">' + (lk ? '<span class="text-matn-muted">📍 رابط الموقع محفوظ</span>' : '<span class="text-amber-700">⚠ بلا رابط موقع</span>') + '</div>' +
+                        '</div>' +
+                        '<div class="flex flex-wrap items-center gap-3 text-xs">' +
+                            '<button type="button" data-branch-edit="' + esc(b.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
+                            (b.featured ? '' : '<button type="button" data-branch-feature="' + esc(b.id) + '" class="text-matn-muted font-bold hover:underline">تعيين كمعروض</button>') +
+                            '<button type="button" data-branch-del="' + esc(b.id) + '" class="text-red-700 font-bold hover:underline">حذف</button>' +
+                        '</div>' +
+                    '</div></li>';
+            }).join('') : '<li class="text-matn-muted py-2">لا فروع بعد.</li>';
+            bl.querySelectorAll('[data-branch-edit]').forEach(function (x) { x.addEventListener('click', function () { branchForm(x.getAttribute('data-branch-edit')); }); });
+            bl.querySelectorAll('[data-branch-feature]').forEach(function (x) { x.addEventListener('click', function () { setFeaturedBranch(x.getAttribute('data-branch-feature')); }); });
+            bl.querySelectorAll('[data-branch-del]').forEach(function (x) { x.addEventListener('click', function () { deleteBranch(x.getAttribute('data-branch-del')); }); });
+        }
+        var bi = document.getElementById('adminBookInfo');
+        if (bi) {
+            var b = s.book || {};
+            bi.innerHTML = (b.title || b.cover)
+                ? '<div class="text-xs"><strong class="text-matn-emerald">' + esc(b.title || '') + '</strong>' + (b.author ? (' — ' + esc(b.author)) : '') +
+                  (safeImg(b.cover) ? ' <span class="text-[10px] bg-matn-creamDark border border-matn-sand px-1.5 py-0.5 rounded">🖼 غلاف</span>' : ' <span class="text-amber-700 text-[10px]">بلا غلاف</span>') + '</div>'
+                : '<div class="text-xs text-amber-700">⚠ لم يُحدَّد كتاب الأسبوع — لن يظهر قسم «اخترنا لكم».</div>';
+        }
+        var pi = document.getElementById('adminPollInfo');
+        if (pi) {
+            var p = s.poll;
+            pi.innerHTML = (p && p.question)
+                ? '<div class="text-xs"><strong class="text-matn-emerald">' + esc(p.question) + '</strong> · ' + num((p.options || []).length) + ' خيارات · ' + num(Object.keys(p.votes || {}).length) + ' صوت' + (p.open === false ? ' · مغلق' : '') + '</div>'
+                : '<div class="text-xs text-matn-muted">لا يوجد تصويت حالياً.</div>';
+        }
+        var pl = document.getElementById('adminPostList');
+        if (pl) {
+            var ps = s.posts || [];
+            pl.innerHTML = ps.length ? ps.slice(0, 20).map(function (p) {
+                return '<li class="border border-matn-sand rounded-xl p-3">' +
+                    '<div class="flex items-center justify-between gap-2 text-[11px]">' +
+                        '<span class="font-bold text-matn-emerald">' + esc(p.name || p.user) + '</span>' +
+                        '<span class="text-matn-muted">' + (p.topic === 'book' ? 'كتاب الأسبوع' : 'جلسة الصالون') + ' · ' + esc(fmtDate(p.at)) + '</span>' +
+                    '</div>' +
+                    '<p class="text-xs mt-1 whitespace-pre-line">' + esc(p.text) + '</p>' +
+                    '<button type="button" data-delpost="' + esc(p.id) + '" class="text-[11px] text-red-700 font-bold mt-1 hover:underline">حذف</button>' +
+                '</li>';
+            }).join('') : '<li class="text-matn-muted py-2">لا مشاركات.</li>';
+            pl.querySelectorAll('[data-delpost]').forEach(function (x) { x.addEventListener('click', function () { deletePost(x.getAttribute('data-delpost')); }); });
+        }
     }
 
     /* قائمة الصالونات في اللوحة */
@@ -1892,9 +2122,225 @@
     }
 
     /* ======================================================================
+       فروعنا — كل مدن المملكة
+       ====================================================================== */
+    function citiesOptions(sel) {
+        var list = SA_CITIES.slice();
+        if (sel && list.indexOf(sel) === -1) list.unshift(sel);
+        return list.map(function (c) {
+            return '<option value="' + esc(c) + '"' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('');
+    }
+    function branchForm(id) {
+        if (!needPerm('branches', 'فروعنا')) return;
+        var d = fullDoc();
+        var b = id ? d.branches.filter(function (x) { return x.id === id; })[0] : null;
+        var isNew = !b;
+        var v = b || { city: 'الرياض', name: '', place: '', link: '', mode: 'hybrid', activity: '' };
+        modal({
+            title: isNew ? 'إضافة فرع جديد' : 'تعديل الفرع',
+            body: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                    '<label class="matn-field"><span>المدينة (كل مدن المملكة)</span><select class="matn-input" id="bfCity">' + citiesOptions(v.city) + '</select></label>' +
+                    '<label class="matn-field"><span>نوع النشاط</span><select class="matn-input" id="bfMode">' +
+                        BRANCH_MODES.map(function (m) {
+                            return '<option value="' + m.key + '"' + ((v.mode || 'in-person') === m.key ? ' selected' : '') + '>' + m.label + '</option>';
+                        }).join('') +
+                    '</select></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>اسم الفرع</span><input class="matn-input" id="bfName" type="text" value="' + esc(v.name) + '" placeholder="فرع الياسمين"></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>المكان / العنوان</span><input class="matn-input" id="bfPlace" type="text" value="' + esc(v.place) + '" placeholder="شارع الأمير سلطان - حي الياسمين"></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>📍 رابط الموقع (دبوس خرائط Google)</span><input class="matn-input" id="bfLink" type="url" value="' + esc(v.link || '') + '" placeholder="https://maps.google.com/?q=24.81,46.63"></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>نشاطه</span><input class="matn-input" id="bfAct" type="text" value="' + esc(v.activity) + '" placeholder="صالونات القراءة والنقاش الأسبوعي"></label>' +
+                  '</div><p class="text-[10px] text-matn-muted mt-1 leading-relaxed">يظهر الفرع في قائمة «فروعنا» أعلى الموقع، ومنه يفتح الزائر الموقع على خرائط Google.</p><p id="bfMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="bfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#bfGo').addEventListener('click', function () {
+                    var nm = w.querySelector('#bfName').value.trim();
+                    var m = w.querySelector('#bfMsg');
+                    if (!nm) { m.textContent = 'اكتب اسم الفرع.'; m.className = 'text-xs text-red-700'; return; }
+                    var nd = fullDoc();
+                    var data = {
+                        city: w.querySelector('#bfCity').value,
+                        name: nm,
+                        place: w.querySelector('#bfPlace').value.trim(),
+                        link: safeUrl(w.querySelector('#bfLink').value),
+                        mode: w.querySelector('#bfMode').value,
+                        activity: w.querySelector('#bfAct').value.trim()
+                    };
+                    if (isNew) {
+                        data.id = 'br-' + rnd(6).toLowerCase();
+                        data.at = new Date().toISOString();
+                        data.featured = nd.branches.length === 0;
+                        nd.branches.push(data);
+                    } else {
+                        var t = nd.branches.filter(function (x) { return x.id === id; })[0];
+                        if (t) for (var k in data) t[k] = data[k];
+                    }
+                    saveDoc(nd); closeModal(); refresh();
+                    toast(isNew ? 'أُضيف الفرع' : 'حُفظت تعديلات الفرع', 'ok');
+                });
+            }
+        });
+    }
+    function deleteBranch(id) {
+        if (!needPerm('branches', 'فروعنا')) return;
+        var d = fullDoc();
+        var b = d.branches.filter(function (x) { return x.id === id; })[0];
+        if (!b) return;
+        confirmBox('حذف الفرع', 'سيُحذف «' + (b.name || b.city) + '» من قائمة فروعنا. لا يمكن التراجع.', function () {
+            var nd = fullDoc();
+            nd.branches = nd.branches.filter(function (x) { return x.id !== id; });
+            if (!nd.branches.some(function (x) { return x.featured; }) && nd.branches[0]) nd.branches[0].featured = true;
+            saveDoc(nd); refresh(); toast('حُذف الفرع', 'ok');
+        }, 'حذف');
+    }
+    function setFeaturedBranch(id) {
+        if (!needPerm('branches', 'فروعنا')) return;
+        var d = fullDoc();
+        d.branches.forEach(function (b) { b.featured = (b.id === id); });
+        saveDoc(d); refresh();
+        toast('صار هذا الفرع هو المعروض في بطاقة الموقع', 'ok');
+    }
+
+    /* ======================================================================
+       كتاب الأسبوع
+       ====================================================================== */
+    function bookForm() {
+        if (!needPerm('book', 'كتاب الأسبوع')) return;
+        var d = fullDoc();
+        var b = d.book || {};
+        modal({
+            title: 'كتاب الأسبوع — اخترنا لكم',
+            body: '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                    '<label class="matn-field sm:col-span-2"><span>عنوان الكتاب</span><input class="matn-input" id="bkWTitle" type="text" value="' + esc(b.title) + '" placeholder="موسم الهجرة إلى الشمال"></label>' +
+                    '<label class="matn-field"><span>المؤلف</span><input class="matn-input" id="bkWAuthor" type="text" value="' + esc(b.author) + '" placeholder="الطيب صالح"></label>' +
+                    '<label class="matn-field"><span>رابط (اختياري)</span><input class="matn-input" id="bkWUrl" type="url" value="' + esc(b.url || '') + '" placeholder="https://..."></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>نبذة / لماذا اخترناه</span><textarea class="matn-input" id="bkWDesc" rows="3" placeholder="سطران عن الكتاب">' + esc(b.desc) + '</textarea></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>🖼 صورة الغلاف</span>' +
+                        '<input class="matn-input" id="bkWPoster" type="url" value="' + (b.cover && b.cover.indexOf('data:') !== 0 ? esc(b.cover) : '') + '" placeholder="https://example.com/cover.jpg">' +
+                        '<input type="file" id="bkWFile" accept="image/*" class="hidden">' +
+                        '<div class="flex flex-wrap items-center gap-2 mt-2">' +
+                            '<button type="button" id="bkWPick" class="matn-preset">📁 اختر صورة من جهازك</button>' +
+                            '<button type="button" id="bkWClear" class="matn-preset">إزالة الصورة</button>' +
+                            '<img id="bkWPrev" alt="" class="' + (b.cover ? '' : 'hidden ') + 'w-16 h-20 object-cover rounded-lg border border-matn-sand" src="' + esc(b.cover || '') + '">' +
+                        '</div></span></label>' +
+                  '</div><p id="bkWMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="bkWGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                var cover = safeImg(b.cover || '');
+                var prev = w.querySelector('#bkWPrev');
+                var showPrev = function (u) { if (u) { prev.src = u; prev.classList.remove('hidden'); } else { prev.removeAttribute('src'); prev.classList.add('hidden'); } };
+                w.querySelector('#bkWPick').addEventListener('click', function () { w.querySelector('#bkWFile').click(); });
+                w.querySelector('#bkWFile').addEventListener('change', function (ev) {
+                    var f = ev.target.files && ev.target.files[0];
+                    if (!f) return;
+                    var m = w.querySelector('#bkWMsg'); m.textContent = 'جارٍ تجهيز الصورة…'; m.className = 'text-xs text-matn-muted';
+                    compressImage(f, 700, 0.82).then(function (url) {
+                        cover = url; w.querySelector('#bkWPoster').value = ''; showPrev(url);
+                        m.textContent = 'حُضّرت الصورة — اضغط حفظ.'; m.className = 'text-xs text-emerald-700';
+                    }).catch(function () { m.textContent = 'تعذّر قراءة الصورة.'; m.className = 'text-xs text-red-700'; });
+                });
+                w.querySelector('#bkWPoster').addEventListener('input', function (e) { cover = safeImg(e.target.value); showPrev(cover); });
+                w.querySelector('#bkWClear').addEventListener('click', function () { cover = ''; w.querySelector('#bkWPoster').value = ''; showPrev(''); });
+                w.querySelector('#bkWGo').addEventListener('click', function () {
+                    var nd = fullDoc();
+                    nd.book = {
+                        title: w.querySelector('#bkWTitle').value.trim(),
+                        author: w.querySelector('#bkWAuthor').value.trim(),
+                        desc: w.querySelector('#bkWDesc').value.trim(),
+                        url: safeUrl(w.querySelector('#bkWUrl').value),
+                        cover: cover,
+                        at: new Date().toISOString()
+                    };
+                    saveDoc(nd); closeModal(); refresh();
+                    toast('حُفظ كتاب الأسبوع', 'ok');
+                });
+            }
+        });
+    }
+
+    /* ======================================================================
+       النقاش وآراء الأعضاء + التصويت
+       ====================================================================== */
+    var postTopic = 'book';
+    function addPost() {
+        if (needsLogin()) { requireLogin('الحوار والنقاش'); return; }
+        var el = document.getElementById('postText');
+        var text = el ? el.value.trim() : '';
+        if (!text) { toast('اكتب رأيك أولاً.', 'error'); return; }
+        var d = fullDoc();
+        var u = d.authUser;
+        var acc = d.accounts[u] || {};
+        if (!Array.isArray(d.posts)) d.posts = [];
+        d.posts.unshift({
+            id: 'po-' + rnd(6), topic: postTopic, user: u,
+            name: acc.name || u, text: String(text).slice(0, 1500), at: new Date().toISOString()
+        });
+        saveDoc(d); refresh();
+        toast('نُشرت مشاركتك', 'ok');
+    }
+    function deletePost(id) {
+        var d = fullDoc();
+        var p = (d.posts || []).filter(function (x) { return x.id === id; })[0];
+        if (!p) return;
+        var mine = d.authUser && p.user === d.authUser;
+        if (!mine && !can('engage')) { toast('يمكنك حذف مشاركتك فقط.', 'error'); return; }
+        d.posts = d.posts.filter(function (x) { return x.id !== id; });
+        saveDoc(d); refresh(); toast('حُذفت المشاركة', 'info');
+    }
+    function votePoll(optId) {
+        if (needsLogin()) { requireLogin('التصويت'); return; }
+        var d = fullDoc();
+        if (!d.poll || !d.poll.question) { toast('لا يوجد تصويت حالياً.', 'info'); return; }
+        if (d.poll.open === false) { toast('التصويت مغلق.', 'info'); return; }
+        if (!d.poll.votes) d.poll.votes = {};
+        d.poll.votes[d.authUser] = optId;
+        saveDoc(d); refresh();
+        toast('شُجّل تصويتك', 'ok');
+    }
+    function pollForm() {
+        if (!needPerm('engage', 'التصويت')) return;
+        var d = fullDoc();
+        var p = d.poll || { question: '', options: [{ id: 'o1', text: '' }, { id: 'o2', text: '' }], votes: {}, open: true };
+        modal({
+            title: 'تصويت الأسبوع',
+            body: '<label class="matn-field"><span>سؤال التصويت</span><input class="matn-input" id="poQ" type="text" value="' + esc(p.question) + '" placeholder="أي كتاب نقرأ الأسبوع القادم؟"></label>' +
+                  '<label class="matn-field"><span>الخيارات — كل سطر خيار (حتى 6)</span><textarea class="matn-input" id="poOpts" rows="4" placeholder="الخيار الأول&#10;الخيار الثاني">' + esc((p.options || []).map(function (o) { return o.text; }).join('\n')) + '</textarea></label>' +
+                  '<div class="flex flex-wrap gap-4 text-xs mt-1">' +
+                    '<label class="flex items-center gap-2"><input type="checkbox" id="poOpen"' + (p.open === false ? '' : ' checked') + '> التصويت مفتوح</label>' +
+                    '<label class="flex items-center gap-2"><input type="checkbox" id="poReset"> تصفير الأصوات</label>' +
+                  '</div><p id="poMsg" class="text-xs"></p>',
+            footer: '<button type="button" id="poGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#poGo').addEventListener('click', function () {
+                    var q = w.querySelector('#poQ').value.trim();
+                    var opts = w.querySelector('#poOpts').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 6);
+                    var m = w.querySelector('#poMsg');
+                    if (!q) { m.textContent = 'اكتب سؤال التصويت.'; m.className = 'text-xs text-red-700'; return; }
+                    if (opts.length < 2) { m.textContent = 'اكتب خيارين على الأقل.'; m.className = 'text-xs text-red-700'; return; }
+                    var nd = fullDoc();
+                    var oldVotes = (nd.poll && !w.querySelector('#poReset').checked) ? (nd.poll.votes || {}) : {};
+                    nd.poll = {
+                        question: q,
+                        options: opts.map(function (tx, i) { return { id: 'o' + (i + 1), text: tx }; }),
+                        votes: oldVotes,
+                        open: !!w.querySelector('#poOpen').checked,
+                        at: new Date().toISOString()
+                    };
+                    saveDoc(nd); closeModal(); refresh();
+                    toast('حُفظ التصويت', 'ok');
+                });
+            }
+        });
+    }
+
+    /* ======================================================================
        الربط
        ====================================================================== */
     document.addEventListener('click', function (e) {
+        var mnu = document.getElementById('branchesMenu');
+        if (mnu && !mnu.classList.contains('hidden') && !e.target.closest('[data-action="toggle-branches"]') && !e.target.closest('#branchesMenu')) {
+            mnu.classList.add('hidden');
+        }
         var el = e.target.closest('[data-action]');
         if (!el) return;
         var a = el.getAttribute('data-action');
@@ -1910,10 +2356,22 @@
         else if (a === 'remind-notify') armBrowserReminder();
         else if (a === 'save-phone') saveMyPhone();
         else if (a === 'edit-phone') {
-            var d0 = migrateAll(doc()); var u0 = d0.authUser;
+            var d0 = fullDoc(); var u0 = d0.authUser;
             if (u0 && d0.accounts[u0]) { d0.accounts[u0].phone = ''; saveDoc(d0); refresh(); }
         }
         else if (a === 'copy-reminder') copyReminder();
+        else if (a === 'toggle-branches') {
+            var mnu = document.getElementById('branchesMenu');
+            if (mnu) mnu.classList.toggle('hidden');
+        }
+        else if (a === 'add-branch') branchForm(null);
+        else if (a === 'edit-book') bookForm();
+        else if (a === 'edit-poll') pollForm();
+        else if (a === 'add-post') addPost();
+        else if (a === 'post-tab') {
+            postTopic = el.getAttribute('data-topic') || 'book';
+            renderPosts(load());
+        }
         else if (a === 'claim-admin') claimSuperAdmin();
         else if (a === 'signout') standaloneSignOut();
     });

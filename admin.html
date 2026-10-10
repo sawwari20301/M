@@ -52,6 +52,13 @@
                     <span data-matn-points>دخول</span>
                 </a>
                 <a href="booking.html" class="hidden sm:inline-block bg-matn-emerald hover:bg-matn-emeraldLight text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition">انضم لصالون</a>
+                <div class="relative">
+                    <button type="button" data-action="toggle-branches" aria-haspopup="true" class="flex items-center gap-1.5 bg-white border border-matn-sand px-3 py-2 rounded-xl text-xs font-bold text-matn-emerald shadow-sm hover:border-matn-gold transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-matn-gold shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>
+                        فروعنا <span class="text-[10px] text-matn-muted">▾</span>
+                    </button>
+                    <div id="branchesMenu" class="hidden absolute top-full left-0 mt-2 w-72 max-w-[85vw] max-h-80 overflow-auto bg-white border border-matn-sand rounded-2xl shadow-xl p-2 space-y-1" data-branches-menu></div>
+                </div>
                 <button id="menuBtn" type="button" aria-label="القائمة" aria-controls="mobileNav" aria-expanded="false" class="lg:hidden w-11 h-11 flex items-center justify-center rounded-xl border border-matn-sand bg-white text-matn-emerald">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
@@ -174,6 +181,40 @@
             <ul id="adminMemberList" class="text-xs"></ul>
         </div>
 
+        <div data-need-perm="branches" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="sec-branches" class="font-bold font-amiri text-lg text-matn-emerald">فروعنا</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">افتح فرعاً في أي مدينة بالمملكة (قائمة بكل المدن)، وحدّد مكانه ورابط موقعه ونوعه ونشاطه — وتظهر كلها في قائمة «📍 فروعنا» أعلى الموقع.</p>
+                </div>
+                <button type="button" data-action="add-branch" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">+ إضافة فرع</button>
+            </div>
+            <ul id="adminBranchList" class="text-xs space-y-3"></ul>
+        </div>
+
+        <div data-need-perm="book" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="sec-book" class="font-bold font-amiri text-lg text-matn-emerald">كتاب الأسبوع — اخترنا لكم</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">العنوان والمؤلف والغلاف والنبذة. يظهر في الرئيسية مع النقاش والتصويت.</p>
+                </div>
+                <button type="button" data-action="edit-book" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">تعديل الكتاب</button>
+            </div>
+            <div id="adminBookInfo" class="bg-matn-cream rounded-2xl border border-matn-sand p-4"></div>
+        </div>
+
+        <div data-need-perm="engage" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 id="sec-engage" class="font-bold font-amiri text-lg text-matn-emerald">النقاش والتصويت</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">أنشئ تصويتاً للأعضاء (حتى 6 خيارات)، وتابع مشاركاتهم في الكتاب وفي جلسة الصالون واحذف ما يخالف.</p>
+                </div>
+                <button type="button" data-action="edit-poll" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">إعداد تصويت</button>
+            </div>
+            <div id="adminPollInfo" class="bg-matn-cream rounded-2xl border border-matn-sand p-4"></div>
+            <ul id="adminPostList" class="text-xs space-y-2"></ul>
+        </div>
+
         <div data-need-perm="bookings" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -185,16 +226,11 @@
             <ul id="adminBookingList" class="text-xs"></ul>
         </div>
 
-        <div class="bg-white rounded-3xl border border-matn-sand shadow-sm overflow-hidden">
-            <div class="p-5 sm:p-6 border-b border-matn-sand/60 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h2 id="sec-map" class="font-bold font-amiri text-lg text-matn-emerald">موقع الفرع</h2>
-                    <p class="text-xs text-matn-muted mt-1">صالون مَتن - فرع الياسمين / Zoom VIP</p>
-                </div>
-                <a href="https://www.google.com/maps/search/?api=1&query=24.816944,46.636111" target="_blank" rel="noopener" class="text-xs font-bold text-matn-emerald bg-matn-creamDark border border-matn-sand px-4 py-2.5 rounded-xl hover:border-matn-gold transition">افتح في خرائط Google ↗</a>
-            </div>
-            <div class="h-64 bg-matn-creamDark">
-                <iframe title="خريطة موقع صالون مَتن - فرع الياسمين" src="https://maps.google.com/maps?q=24.816944,46.636111&t=&z=15&ie=UTF8&iwloc=&output=embed" class="w-full h-full border-0" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+        <div class="bg-white rounded-3xl border border-matn-sand shadow-sm p-6">
+            <div id="branchCard" class="hidden"></div>
+            <div class="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-matn-sand/60">
+                <p class="text-xs text-matn-muted">أضف فروعاً في مدن أخرى من قسم «فروعنا» أعلاه — وتظهر كلها في قائمة «📍 فروعنا» أعلى الموقع.</p>
+                <button type="button" data-action="toggle-branches" class="text-xs font-bold text-matn-emerald bg-matn-creamDark border border-matn-sand px-4 py-2.5 rounded-xl hover:border-matn-gold transition">📍 فروعنا</button>
             </div>
         </div>
     </main>
