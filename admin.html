@@ -11,16 +11,17 @@
         a:focus-visible, button:focus-visible { outline: 2px solid #c5a059; outline-offset: 2px; border-radius: 6px; }
     </style>
     <title>لوحة تحكم المشرف العام | نادي مَتن</title>
-    <link rel="stylesheet" href="fonts.css?v=47">
-    <link rel="stylesheet" href="styles.css?v=47">
+    <link rel="stylesheet" href="fonts.css?v=48">
+    <link rel="stylesheet" href="styles.css?v=48">
     <style>header.sticky{position:-webkit-sticky;position:sticky}</style>
 </head>
 <body class="matn-viewport min-h-screen flex flex-col bg-matn-cream text-matn-charcoal font-cairo">
 
-    <div class="bg-matn-emeraldDark px-4 py-2.5 border-b border-matn-emerald/40">
+    <div data-ad-bar class="bg-matn-emeraldDark px-4 py-2.5 border-b border-matn-emerald/40">
         <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-center">
             <span class="inline-block w-2 h-2 rounded-full bg-matn-gold animate-pulse shrink-0"></span>
-            <span class="font-bold text-sm md:text-base text-white tracking-wide leading-relaxed">الصالون الثقافي العربي المعاصر <span class="text-matn-goldLight">•</span> نلتقي حول كتاب، ونغادر بفكرة.</span>
+            <span data-header-ad class="font-bold text-sm md:text-base text-matn-goldLight tracking-wide leading-relaxed">الصالون الثقافي العربي المعاصر • نلتقي حول كتاب، ونغادر بفكرة.</span>
+            <a data-header-link href="#" class="hidden underline font-bold text-matn-goldLight hover:text-white transition"></a>
         </div>
     </div>
 
@@ -274,6 +275,23 @@
         <div data-need-perm="engage" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
+                    <h2 class="font-bold font-amiri text-lg text-matn-emerald">📢 إعلان الترويسة</h2>
+                    <p class="text-[11px] text-matn-muted mt-1">الشريط العلوي في كل صفحات الموقع — اكتب نصه، أو ضع <strong>عرضاً/إعلاناً</strong> مكانه، وأضف رابطاً، وأوقفه أو فعّله متى شئت.</p>
+                </div>
+                <button type="button" data-action="save-ad" class="shrink-0 bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow transition">حفظ الإعلان</button>
+            </div>
+            <p id="adPreview"></p>
+            <label class="matn-field"><span>نص الإعلان</span><input class="matn-input" id="adText" type="text" maxlength="160" placeholder="مثال: عرض خاص للأعضاء — خصم 20% لدى شركائنا هذا الأسبوع"></label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="matn-field"><span>نص الرابط (اختياري)</span><input class="matn-input" id="adLinkText" type="text" maxlength="40" placeholder="احجز مقعدك الآن ←"></label>
+                <label class="matn-field"><span>الرابط (اختياري)</span><input class="matn-input" id="adLink" type="url" dir="ltr" placeholder="https://... أو booking.html"></label>
+            </div>
+            <label class="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" id="adActive" class="accent-matn-emerald" checked> مُفعّل — يظهر للزوار (أزِله لإيقافه وإخفاء الشريط كاملاً)</label>
+        </div>
+
+        <div data-need-perm="engage" class="bg-white p-6 rounded-2xl border border-matn-sand shadow-sm space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
                     <h2 class="font-bold font-amiri text-lg text-matn-emerald">🚫 فلتر الكلمات المخالفة للذوق العام</h2>
                     <p class="text-[11px] text-matn-muted mt-1">تُرفض أي مشاركة أو تعليق أو مذكرة أو رسالة تحوي إحدى هذه الكلمات. افصل بينها بفاصلة أو سطر.</p>
                 </div>
@@ -323,12 +341,12 @@
                 <a href="admin.html" class="block py-1.5 text-white/70 hover:text-white transition">بوابة الإشراف</a>
             </div>
         </div>
-        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 47</span></div>
+        <div class="border-t border-matn-emerald/60 py-4 text-center text-[11px] text-white/60">© 2026 نادي مَتن للقراءة والحوار. نَلْتَقِي حَولَ كِتَاب.. وَنُغَادِرُ بِفِكْرَة. <span class="text-white/40">· الإصدار 48</span></div>
     </footer>
 
-    <script src="cloud-config.js?v=47" defer></script>
-    <script src="cloud.js?v=47" defer></script>
-    <script src="app.js?v=47" defer></script>
+    <script src="cloud-config.js?v=48" defer></script>
+    <script src="cloud.js?v=48" defer></script>
+    <script src="app.js?v=48" defer></script>
     <script>
         (function () {
             var btn = document.getElementById('menuBtn');

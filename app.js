@@ -53,6 +53,15 @@
         return 'https://' + t;
     }
 
+    /* روابط داخلية أو خارجية آمنة (تسمح بصفحات الموقع) */
+    function safeLink(u) {
+        var t = String(u === null || u === undefined ? '' : u).trim();
+        if (!t) return '';
+        if (/^https?:\/\//i.test(t)) return t;
+        if (/^[a-z][a-z0-9+.\-]*:/i.test(t)) return '';        /* يمنع javascript: و data: */
+        if (/^[\w.\-\/]+(\.html)?(#[-\w]*)?(\?[\w=&%.\-]*)?$/i.test(t)) return t;   /* صفحة داخلية */
+        return 'https://' + t;
+    }
     function safeImg(u) {
         var t = String(u === null || u === undefined ? '' : u).trim();
         if (!t) return '';
@@ -2770,6 +2779,8 @@
         renderPollsPage(s);
         renderHomePoll(s);
         renderBadWords(s);
+        renderHeaderAdAdmin(s);
+        renderHeaderAd(s);
         renderMyDiary(s);
         renderDiaryWall(s);
         renderBell(s);
@@ -3390,6 +3401,62 @@
         if (n >= 3 && n <= 10) return 'مذكرات';
         return 'مذكرة';
     }
+    /* ============ 📢 إعلان الترويسة (من اللوحة) ============ */
+    var AD_DEFAULT = 'الصالون الثقافي العربي المعاصر • نلتقي حول كتاب، ونغادر بفكرة.';
+    function headerAd(d) {
+        var a = (d && d.headerAd) || {};
+        return {
+            text: (typeof a.text === 'string' && a.text.trim()) ? a.text : AD_DEFAULT,
+            link: a.link || '', linkText: a.linkText || '',
+            active: a.active === false ? false : true
+        };
+    }
+    function renderHeaderAd(s) {
+        var bars = document.querySelectorAll('[data-ad-bar]');
+        if (!bars.length) return;
+        var ad = headerAd(fullDoc());
+        bars.forEach(function (b) { b.classList.toggle('hidden', ad.active === false); });
+        document.querySelectorAll('[data-header-ad]').forEach(function (el) { el.textContent = ad.text; });
+        document.querySelectorAll('[data-header-link]').forEach(function (a) {
+            var lk = safeLink(ad.link);
+            if (ad.active !== false && lk && ad.linkText) {
+                a.href = lk; a.textContent = ad.linkText; a.classList.remove('hidden');
+            } else { a.classList.add('hidden'); a.removeAttribute('href'); a.textContent = ''; }
+        });
+    }
+    function saveHeaderAd() {
+        if (!needPerm('engage', 'إعلان الترويسة')) return;
+        var q = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+        var cb = document.getElementById('adActive');
+        var d = fullDoc();
+        d.headerAd = {
+            text: String(q('adText')).trim() || AD_DEFAULT,
+            linkText: String(q('adLinkText')).trim(),
+            link: safeLink(String(q('adLink')).trim()) || '',
+            active: cb ? !!cb.checked : true,
+            at: new Date().toISOString()
+        };
+        saveDoc(d); state = null; render();
+        toast(d.headerAd.active ? 'حُفظ الإعلان وهو ظاهر الآن' : 'حُفظ الإعلان وأُوقف', 'ok');
+    }
+    function renderHeaderAdAdmin(s) {
+        var t = document.getElementById('adText');
+        if (!t) return;
+        if (document.activeElement === t) return;
+        var a = headerAd(fullDoc());
+        t.value = a.text;
+        var lt = document.getElementById('adLinkText'); if (lt) lt.value = a.linkText || '';
+        var lk = document.getElementById('adLink'); if (lk) lk.value = a.link || '';
+        var cb = document.getElementById('adActive'); if (cb) cb.checked = a.active !== false;
+        var pv = document.getElementById('adPreview');
+        if (pv) {
+            pv.innerHTML = '<span class="font-bold text-white">' + esc(a.text) + '</span>' +
+                (a.linkText && a.link ? (' <span class="underline text-matn-goldLight">' + esc(a.linkText) + '</span>') : '') +
+                (a.active === false ? ' <span class="text-red-300 font-bold">(موقوف — لا يظهر للزوار)</span>' : '');
+            pv.className = 'bg-matn-emeraldDark rounded-xl px-3 py-2.5 text-xs text-center';
+        }
+    }
+
     /* ============ فلتر الكلمات المخالفة للذوق العام ============ */
     var BAD_WORDS_SEED = ['كلب', 'حمار', 'غبي', 'أحمق', 'تافه', 'خرقاء', 'لعنة', 'قذر', 'حقير', 'كريه',
         'مقرف', 'سخيف', 'بليد', 'حثالة', 'زبالة', 'يلعن', 'قذارة', 'وسخ', 'مجنون', 'أبله', 'فاشل'];
@@ -4591,6 +4658,7 @@
         else if (a === 'pay-reject') reviewPayment(el.getAttribute('data-uname'), el.getAttribute('data-sid'), false);
         else if (a === 'save-pay') savePaySettings();
         else if (a === 'save-badwords') saveBadWords();
+        else if (a === 'save-ad') saveHeaderAd();
         else if (a === 'buy-book') orderModal('book', 'book', (fullDoc().book || {}).title || 'كتاب الأسبوع', bookPrice());
         else if (a === 'order-ok') reviewOrder(el.getAttribute('data-oid'), true);
         else if (a === 'order-no') reviewOrder(el.getAttribute('data-oid'), false);
