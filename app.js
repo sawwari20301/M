@@ -3403,57 +3403,118 @@
     }
     /* ============ 📢 إعلان الترويسة (من اللوحة) ============ */
     var AD_DEFAULT = 'الصالون الثقافي العربي المعاصر • نلتقي حول كتاب، ونغادر بفكرة.';
+    var AD_EVERY = 4000;                 /* مدة بقاء كل إعلان: 4 ثوانٍ */
+    function adItemsOf(a) {
+        a = a || {};
+        if (Array.isArray(a.items) && a.items.length) {
+            return a.items.map(function (x) {
+                return { text: String((x && x.text) || '').trim(), linkText: String((x && x.linkText) || '').trim(), link: (x && x.link) || '' };
+            }).filter(function (x) { return x.text; });
+        }
+        /* ترحيل الشكل القديم (إعلان واحد) */
+        if (typeof a.text === 'string' && a.text.trim()) {
+            return [{ text: a.text.trim(), linkText: a.linkText || '', link: a.link || '' }];
+        }
+        return [{ text: AD_DEFAULT, linkText: '', link: '' }];
+    }
     function headerAd(d) {
         var a = (d && d.headerAd) || {};
-        return {
-            text: (typeof a.text === 'string' && a.text.trim()) ? a.text : AD_DEFAULT,
-            link: a.link || '', linkText: a.linkText || '',
-            active: a.active === false ? false : true
-        };
+        return { items: adItemsOf(a), active: a.active === false ? false : true, every: AD_EVERY };
     }
+    var adTimer = null, adIndex = 0;
+    function adItemHtml(it, cls) {
+        var lk = safeLink(it.link);
+        return '<div class="matn-ad-item ' + (cls || '') + '">' +
+            '<span class="font-bold text-sm md:text-base text-matn-goldLight tracking-wide leading-relaxed">' + esc(it.text) + '</span>' +
+            (lk && it.linkText ? (' <a href="' + esc(lk) + '" class="underline font-bold text-matn-goldLight hover:text-white transition whitespace-nowrap">' + esc(it.linkText) + '</a>') : '') +
+        '</div>';
+    }
+    function stopAdTicker() { if (adTimer) { window.clearInterval(adTimer); adTimer = null; } }
     function renderHeaderAd(s) {
         var bars = document.querySelectorAll('[data-ad-bar]');
         if (!bars.length) return;
         var ad = headerAd(fullDoc());
+        var slots = document.querySelectorAll('[data-ad-slot]');
+        if (!slots.length) return;
         bars.forEach(function (b) { b.classList.toggle('hidden', ad.active === false); });
-        document.querySelectorAll('[data-header-ad]').forEach(function (el) { el.textContent = ad.text; });
-        document.querySelectorAll('[data-header-link]').forEach(function (a) {
-            var lk = safeLink(ad.link);
-            if (ad.active !== false && lk && ad.linkText) {
-                a.href = lk; a.textContent = ad.linkText; a.classList.remove('hidden');
-            } else { a.classList.add('hidden'); a.removeAttribute('href'); a.textContent = ''; }
+        stopAdTicker();
+        if (ad.active === false) { slots.forEach(function (sl) { sl.innerHTML = ''; }); return; }
+        var reduced = false;
+        try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+        slots.forEach(function (sl) {
+            sl.innerHTML = adItemHtml(ad.items[0], 'matn-ad-current');
         });
+        adIndex = 0;
+        if (ad.items.length < 2 || reduced) return;
+        adTimer = window.setInterval(function () {
+            var list = headerAd(fullDoc()).items;
+            if (list.length < 2) return;
+            adIndex = (adIndex + 1) % list.length;
+            document.querySelectorAll('[data-ad-slot]').forEach(function (sl) {
+                var cur = sl.querySelector('.matn-ad-current');
+                if (cur) {
+                    cur.classList.remove('matn-ad-current');
+                    cur.classList.add('matn-ad-out');
+                    window.setTimeout(function () { if (cur.parentNode) cur.parentNode.removeChild(cur); }, 600);
+                }
+                var tmp = document.createElement('div');
+                tmp.innerHTML = adItemHtml(list[adIndex], 'matn-ad-in matn-ad-current');
+                sl.appendChild(tmp.firstChild);
+            });
+        }, AD_EVERY);
+    }
+    function adRowHtml(x) {
+        return '<div data-ad-row class="bg-matn-cream rounded-2xl border border-matn-sand p-3 space-y-2">' +
+            '<div class="flex items-center justify-between gap-2">' +
+                '<span class="text-[11px] font-bold text-matn-emerald">إعلان</span>' +
+                '<button type="button" data-action="ad-del-row" class="text-red-700 text-[11px] font-bold hover:underline">حذف هذا الإعلان</button>' +
+            '</div>' +
+            '<input class="matn-input" data-ad-text type="text" maxlength="160" placeholder="نص الإعلان — مثال: 🎁 عرض خاص للأعضاء هذا الأسبوع" value="' + esc(x.text || '') + '">' +
+            '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' +
+                '<input class="matn-input" data-ad-ltext type="text" maxlength="40" placeholder="نص الرابط (اختياري)" value="' + esc(x.linkText || '') + '">' +
+                '<input class="matn-input" data-ad-lurl type="url" dir="ltr" placeholder="الرابط (اختياري)" value="' + esc(x.link || '') + '">' +
+            '</div></div>';
     }
     function saveHeaderAd() {
         if (!needPerm('engage', 'إعلان الترويسة')) return;
-        var q = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
-        var cb = document.getElementById('adActive');
         var d = fullDoc();
-        d.headerAd = {
-            text: String(q('adText')).trim() || AD_DEFAULT,
-            linkText: String(q('adLinkText')).trim(),
-            link: safeLink(String(q('adLink')).trim()) || '',
-            active: cb ? !!cb.checked : true,
-            at: new Date().toISOString()
-        };
+        var rows = document.querySelectorAll('#adRows [data-ad-row]');
+        var items = [];
+        rows.forEach(function (r) {
+            var tx = r.querySelector('[data-ad-text]');
+            var lt = r.querySelector('[data-ad-ltext]');
+            var lu = r.querySelector('[data-ad-lurl]');
+            var t = tx ? tx.value.trim() : '';
+            if (!t) return;
+            items.push({
+                text: t,
+                linkText: lt ? lt.value.trim() : '',
+                link: safeLink(lu ? lu.value.trim() : '') || ''
+            });
+        });
+        if (!items.length) items = [{ text: AD_DEFAULT, linkText: '', link: '' }];
+        var cb = document.getElementById('adActive');
+        var prevItems = adItemsOf(d.headerAd);
+        var same = JSON.stringify(prevItems) === JSON.stringify(items);
+        d.headerAd = { items: items, active: cb ? !!cb.checked : true, at: new Date().toISOString() };
         saveDoc(d); state = null; render();
-        toast(d.headerAd.active ? 'حُفظ الإعلان وهو ظاهر الآن' : 'حُفظ الإعلان وأُوقف', 'ok');
+        toast(d.headerAd.active ? ('حُفظت الإعلانات (' + num(items.length) + ') وهي تتبادل الآن') : 'حُفظت الإعلانات وأُوقفت', 'ok');
     }
     function renderHeaderAdAdmin(s) {
-        var t = document.getElementById('adText');
-        if (!t) return;
-        if (document.activeElement === t) return;
+        var box = document.getElementById('adRows');
+        if (!box) return;
+        if (document.activeElement && box.contains(document.activeElement)) return;
         var a = headerAd(fullDoc());
-        t.value = a.text;
-        var lt = document.getElementById('adLinkText'); if (lt) lt.value = a.linkText || '';
-        var lk = document.getElementById('adLink'); if (lk) lk.value = a.link || '';
+        box.innerHTML = a.items.map(adRowHtml).join('');
         var cb = document.getElementById('adActive'); if (cb) cb.checked = a.active !== false;
         var pv = document.getElementById('adPreview');
         if (pv) {
-            pv.innerHTML = '<span class="font-bold text-white">' + esc(a.text) + '</span>' +
-                (a.linkText && a.link ? (' <span class="underline text-matn-goldLight">' + esc(a.linkText) + '</span>') : '') +
-                (a.active === false ? ' <span class="text-red-300 font-bold">(موقوف — لا يظهر للزوار)</span>' : '');
-            pv.className = 'bg-matn-emeraldDark rounded-xl px-3 py-2.5 text-xs text-center';
+            pv.innerHTML = a.items.map(function (x, i) {
+                return '<div class="' + (i ? 'mt-1' : '') + '"><span class="text-[10px] text-white/50">' + num(i + 1) + ') </span><span class="font-bold text-matn-goldLight">' + esc(x.text) + '</span>' +
+                    (x.linkText && safeLink(x.link) ? (' <span class="underline text-matn-goldLight">' + esc(x.linkText) + '</span>') : '') + '</div>';
+            }).join('') +
+            (a.active === false ? '<div class="text-red-300 font-bold mt-1">(موقوف — لا يظهر للزوار)</div>' : '<div class="text-white/60 mt-1">يتبادل كل ٤ ثوانٍ · يدخل من أسفل ويخرج للأعلى</div>');
+            pv.className = 'bg-matn-emeraldDark rounded-xl px-3 py-2.5 text-[11px] text-center space-y-0.5';
         }
     }
 
@@ -4659,6 +4720,18 @@
         else if (a === 'save-pay') savePaySettings();
         else if (a === 'save-badwords') saveBadWords();
         else if (a === 'save-ad') saveHeaderAd();
+        else if (a === 'ad-add-row') {
+            var box0 = document.getElementById('adRows');
+            if (box0) {
+                var t0 = document.createElement('div');
+                t0.innerHTML = adRowHtml({ text: '', linkText: '', link: '' });
+                box0.appendChild(t0.firstChild);
+            }
+        }
+        else if (a === 'ad-del-row') {
+            var row0 = el.closest('[data-ad-row]');
+            if (row0 && row0.parentNode) row0.parentNode.removeChild(row0);
+        }
         else if (a === 'buy-book') orderModal('book', 'book', (fullDoc().book || {}).title || 'كتاب الأسبوع', bookPrice());
         else if (a === 'order-ok') reviewOrder(el.getAttribute('data-oid'), true);
         else if (a === 'order-no') reviewOrder(el.getAttribute('data-oid'), false);
