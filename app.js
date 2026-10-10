@@ -136,6 +136,39 @@
 
     /* ---------- التذكير بالموعد ---------- */
     var REMIND_OPTS = [15, 30, 60, 120, 180, 1440];
+    var DUR_OPTS = [45, 60, 75, 90, 120, 180, 240];
+    function durLabel(m) {
+        m = m || 90;
+        var h = Math.floor(m / 60), r = m % 60;
+        if (h && r) return h + ' ساعة و ' + r + ' دقيقة';
+        if (h === 1) return 'ساعة';
+        if (h === 2) return 'ساعتان';
+        if (h > 2) return h + ' ساعات';
+        return m + ' دقيقة';
+    }
+    function timeLabel(iso) {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var h = d.getHours(), mm = d.getMinutes(), h12 = h % 12;
+        if (h12 === 0) h12 = 12;
+        return h12 + ':' + (mm < 10 ? '0' + mm : mm) + ' ' + (h < 12 ? 'صباحاً' : 'مساءً');
+    }
+    function salonEndISO(s) {
+        var st = new Date((s && s.startsAt) || '');
+        if (isNaN(st.getTime())) return '';
+        return new Date(st.getTime() + ((s.durationMin || 90) * 60000)).toISOString();
+    }
+    function salonTimeRange(s) {
+        var e = salonEndISO(s);
+        if (!e) return '';
+        return 'من ' + timeLabel(s.startsAt) + ' إلى ' + timeLabel(e);
+    }
+    /* فرع الصالون (إن حُدّد) */
+    function salonBranch(s, id) {
+        if (!id) return null;
+        var br = ((s && s.branches) || []).filter(function (b) { return b.id === id; })[0];
+        return br || null;
+    }
     function remindLabel(m) {
         if (m === 1440) return 'قبل يوم';
         if (m === 60) return 'قبل ساعة';
@@ -181,7 +214,7 @@
     function icsFor(salon, link) {
         var start = new Date(salon.startsAt);
         if (isNaN(start.getTime())) return '';
-        var end = new Date(start.getTime() + 90 * 60000);
+        var end = new Date(salonEndISO(salon));
         var mins = salon.reminderMin || 60;
         var desc = (link ? ('رابط المجلس: ' + link + '\n') : '') + 'نادي مَتن — صالون القراءة';
         return [
@@ -217,7 +250,7 @@
     function gcalUrl(salon, link) {
         var start = new Date(salon.startsAt);
         if (isNaN(start.getTime())) return '';
-        var end = new Date(start.getTime() + 90 * 60000);
+        var end = new Date(salonEndISO(salon));
         return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
             '&text=' + encodeURIComponent(salon.title || 'صالون مَتن') +
             '&dates=' + icsStamp(start) + '/' + icsStamp(end) +
@@ -373,6 +406,10 @@
             if (!(x.reminderMin > 0)) { x.reminderMin = 60; dirty = true; }
             if (typeof x.desc !== 'string') { x.desc = ''; dirty = true; }
             if (typeof x.poster !== 'string') { x.poster = ''; dirty = true; }
+            if (typeof x.city !== 'string') { x.city = ''; dirty = true; }
+            if (typeof x.branchId !== 'string') { x.branchId = ''; dirty = true; }
+            if (!(x.durationMin > 0)) { x.durationMin = 90; dirty = true; }
+            if (typeof x.home !== 'boolean') { x.home = false; dirty = true; }
         });
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
@@ -789,6 +826,18 @@
                     '<label class="matn-field sm:col-span-2"><span>عنوان الجلسة</span><input class="matn-input" id="sfTitle" type="text" value="' + esc(v.title) + '"></label>' +
                     '<div class="sm:col-span-2 bg-matn-cream border border-matn-sand rounded-xl p-3">' +
                         '<label class="matn-field"><span>📅 اليوم والساعة (لظهور العدّاد والتذكير)</span><input class="matn-input" id="sfStart" type="datetime-local" value="' + whenValue(v.startsAt) + '"></label>' +
+                    '<label class="matn-field"><span>⏳ مدة اللقاء</span><select class="matn-input" id="sfDur">' +
+                        DUR_OPTS.map(function (mm) {
+                            return '<option value="' + mm + '"' + ((v.durationMin || 90) === mm ? ' selected' : '') + '>' + durLabel(mm) + '</option>';
+                        }).join('') +
+                    '</select></label>' +
+                    '<label class="matn-field"><span>🏙 المدينة</span><select class="matn-input" id="sfCity">' + citiesOptions(v.city) + '</select></label>' +
+                    '<label class="matn-field"><span>📍 مكانه (الفرع) — حضوري أو كليهما</span><select class="matn-input" id="sfBranch">' +
+                        '<option value="">بدون فرع محدد</option>' +
+                        (fullDoc().branches || []).map(function (b) {
+                            return '<option value="' + esc(b.id) + '"' + (v.branchId === b.id ? ' selected' : '') + '>' + esc(b.name) + ' — ' + esc(b.city) + '</option>';
+                        }).join('') +
+                    '</select></label>' +
                         '<div class="flex flex-wrap gap-1.5 mt-1">' +
                             '<button type="button" class="matn-preset" data-preset="0">اليوم 7:30 م</button>' +
                             '<button type="button" class="matn-preset" data-preset="1">غداً 7:30 م</button>' +
@@ -821,10 +870,18 @@
                     '<label class="matn-field sm:col-span-2"><span>رابط الاجتماع — يظهر للمحجوزين فقط (Zoom أو أي رابط)</span><input class="matn-input" id="sfLink" type="url" value="' + esc(v.link || '') + '" placeholder="https://zoom.us/j/123456789"></label>' +
                     '<label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '"></label>' +
                     '<label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="sfCap" type="number" min="1" step="1" value="' + (v.capacity || 6) + '"></label>' +
+                    '<label class="flex items-center gap-2 text-xs sm:col-span-2 bg-matn-cream border border-matn-sand rounded-xl px-3 py-2.5"><input type="checkbox" id="sfHome"' + (v.home ? ' checked' : '') + '> <span>اعرضه في الصفحة الرئيسية (حتى 3 صالونات)</span></label>' +
                   '</div><p id="sfMsg" class="text-xs"></p>',
             footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
             ready: function (w) {
                 var posterVal = safeImg(v.poster || '');
+                var brSel = w.querySelector('#sfBranch');
+                var citySel = w.querySelector('#sfCity');
+                if (brSel) brSel.addEventListener('change', function () {
+                    var nd0 = fullDoc();
+                    var b0 = nd0.branches.filter(function (x) { return x.id === brSel.value; })[0];
+                    if (b0 && b0.city) citySel.value = b0.city;
+                });
                 var prev = w.querySelector('#sfPrev');
                 var showPrev = function (url) {
                     if (url) { prev.src = url; prev.classList.remove('hidden'); }
@@ -890,8 +947,17 @@
                         mode: w.querySelector('#sfMode').value,
                         link: safeUrl(w.querySelector('#sfLink').value),
                         startsAt: startISO,
+                        durationMin: parseInt(w.querySelector('#sfDur').value, 10) || 90,
+                        city: (citySel ? citySel.value : '') || '',
+                        branchId: (brSel ? brSel.value : '') || '',
+                        home: !!(w.querySelector('#sfHome') && w.querySelector('#sfHome').checked),
                         reminderMin: parseInt(w.querySelector('#sfRemind').value, 10) || 60
                     };
+                    var marked = doc2.salons.filter(function (x) { return x.home && x.id !== id; }).length;
+                    if (data.home && marked >= 3) {
+                        m.textContent = 'يمكنك تحديد ثلاثة صالونات للصفحة الرئيسية كحد أقصى.';
+                        m.className = 'text-xs text-red-700'; return;
+                    }
                     if (isNew) {
                         data.id = newSalonId(doc2);
                         data.featured = doc2.salons.length === 0;
@@ -899,7 +965,7 @@
                         doc2.salons.push(data);
                     } else {
                         var t2 = salonById(doc2, id);
-                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; }
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; t2.durationMin = data.durationMin; t2.city = data.city; t2.branchId = data.branchId; t2.home = data.home; }
                     }
                     saveDoc(doc2);
                     closeModal(); refresh();
@@ -1640,6 +1706,25 @@
             else { el.textContent = ''; el.classList.add('hidden'); }
         });
 
+        /* المدينة ووقت اللقاء ومدته والفرع */
+        document.querySelectorAll('[data-session-city]').forEach(function (el) { el.textContent = salon.city || '—'; });
+        document.querySelectorAll('[data-session-time]').forEach(function (el) {
+            var t = salonTimeRange(salon);
+            el.textContent = t ? (t + ' · ' + durLabel(salon.durationMin)) : 'يُعلَن قريباً';
+        });
+        var brBoxes = document.querySelectorAll('[data-session-branchbox]');
+        if (brBoxes.length) {
+            var br = salonBranch(s, salon.branchId);
+            brBoxes.forEach(function (el) {
+                if (!br) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+                var lk = safeUrl(br.link);
+                el.classList.remove('hidden');
+                el.innerHTML = '<strong>الفرع:</strong> ' + esc(br.name) + ' · ' + esc(br.city) +
+                    ' <span class="text-[10px] bg-matn-creamDark border border-matn-sand rounded-full px-2 py-0.5">' + brModeLabel(br.mode) + '</span>' +
+                    (lk ? ' <a href="' + esc(lk) + '" target="_blank" rel="noopener" class="text-matn-emerald font-bold whitespace-nowrap">📍 الموقع ↗</a>' : '');
+            });
+        }
+
         /* عدّاد تنازلي عام على بطاقة الصالون — يراه الجميع */
         document.querySelectorAll('[data-session-countdown]').forEach(function (el) {
             var cd = countdown(salon.startsAt);
@@ -1665,6 +1750,7 @@
                             '<div class="font-bold" data-countdown data-at="' + esc(bs.startsAt) + '"><span data-countdown-text>' + esc(cd.text) + '</span></div>' +
                         '</div>' +
                         '<div class="text-matn-muted leading-relaxed">' + esc(bs.title) + ' — ' + esc(fmtDateTime(bs.startsAt)) +
+                            (salonTimeRange(bs) ? (' (' + esc(salonTimeRange(bs)) + ' · ' + durLabel(bs.durationMin) + ')') : '') +
                             ' · يصلك التنبيه ' + remindLabel(bs.reminderMin || 60) + '.' + (slink ? ' ورابط المجلس جاهز بالأسفل ↓' : '') + '</div>' +
                         waRemindRow(bs)
                         '<div class="flex flex-wrap gap-2">' +
@@ -1873,6 +1959,7 @@
 
         /* الصالونات */
         renderSalons(s);
+        renderHomeSalons(s);
         renderBranches(s);
         renderBook(s);
         renderPosts(s);
@@ -2055,6 +2142,29 @@
         }
     }
 
+    /* حتى ثلاثة صالونات مميزة في الصفحة الرئيسية */
+    function renderHomeSalons(s) {
+        var box = document.getElementById('homeSalons');
+        if (!box) return;
+        var feat = s.salon || {};
+        var list = (s.salons || []).filter(function (x) { return x.home && x.id !== feat.id; }).slice(0, 3);
+        if (!list.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+        box.classList.remove('hidden');
+        var d = fullDoc();
+        box.innerHTML = '<h3 class="font-amiri text-2xl font-bold text-matn-emerald text-center mb-5">صالونات قادمة في نادينا</h3>' +
+            '<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">' + list.map(function (x) {
+                var left = seatsLeftOf(d, x);
+                var br = salonBranch(s, x.branchId);
+                return '<a href="booking.html" class="block bg-white rounded-3xl border border-matn-sand shadow-sm p-5 hover:border-matn-gold transition">' +
+                    '<div class="text-[10px] font-bold text-matn-gold">' + esc(x.city || '') + (br ? (' · ' + esc(br.name)) : '') + '</div>' +
+                    '<div class="font-amiri text-lg font-bold text-matn-emerald mt-1 leading-snug">' + esc(x.title) + '</div>' +
+                    (x.when ? '<div class="text-[11px] text-matn-muted mt-1.5">📅 ' + esc(x.when) + '</div>' : '') +
+                    (x.startsAt ? '<div class="text-[11px] text-matn-muted">🕐 ' + esc(salonTimeRange(x)) + ' · ' + durLabel(x.durationMin) + '</div>' : '') +
+                    '<div class="text-[11px] text-matn-muted mt-1">' + brModeLabel(x.mode) + ' · ' + (left > 0 ? (num(left) + ' مقعداً متاحاً') : 'اكتمل العدد') + '</div>' +
+                '</a>';
+            }).join('') + '</div>';
+    }
+
     /* قائمة الصالونات في اللوحة */
     function renderSalons(s) {
         var sl = document.getElementById('adminSalonList');
@@ -2070,16 +2180,20 @@
                             (x.featured ? ' <span class="text-[10px] font-bold bg-matn-gold/25 text-matn-emerald px-1.5 py-0.5 rounded">الجلسة القادمة</span>' : '') + '</div>' +
                         '<div class="text-[11px] text-matn-muted mt-1">' + esc(x.when || '—') + ' • ' + esc(x.where || '—') + '</div>' +
                         '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
+                        '<div class="text-[11px] text-matn-muted mt-0.5">' + esc(x.city || 'بلا مدينة') + (salonBranch(s, x.branchId) ? (' · ' + esc(salonBranch(s, x.branchId).name)) : '') +
+                            (x.startsAt ? (' · 🕐 ' + esc(salonTimeRange(x)) + ' · ' + durLabel(x.durationMin)) : '') + '</div>' +
                         '<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + modeLabel(x.mode) + '</span>' +
                             (safeUrl(x.link) ? ' · <span class="text-matn-muted">رابط الاجتماع محفوظ (يراه المحجوزون فقط)</span>' : ' · <span class="text-matn-muted">لا يوجد رابط اجتماع</span>') + '</div>' +
                         '<div class="text-[11px] mt-0.5 text-matn-muted">' + (String(x.desc || '').trim() ? '📝 الوصف مكتوب' : '<span class="text-amber-700">📝 بلا وصف</span>') +
                             ' · ' + (safeImg(x.poster) ? '🖼 صورة' : '<span class="text-amber-700">🖼 بلا صورة</span>') +
+                            (x.home ? ' · <span class="text-emerald-700 font-bold">★ في الرئيسية</span>' : '') +
                             ' · ' + (x.startsAt
                             ? ('⏰ ' + esc(fmtDateTime(x.startsAt)) + ' · يصلك التنبيه ' + remindLabel(x.reminderMin || 60))
                             : '<span class="text-amber-700 font-bold">⚠ لم تُحدَّد اليوم والساعة — لا عدّاد ولا تذكير</span>') + '</div>' +
                     '</div>' +
                     '<div class="flex flex-wrap items-center gap-3 text-xs">' +
                         '<button type="button" data-salon-edit="' + esc(x.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
+                        '<button type="button" data-salon-home="' + esc(x.id) + '" class="text-matn-muted font-bold hover:underline">' + (x.home ? 'إزالة من الرئيسية' : 'أظهره في الرئيسية') + '</button>' +
                         (x.featured ? '' : '<button type="button" data-salon-feature="' + esc(x.id) + '" class="text-matn-muted font-bold hover:underline">تعيين كقادم</button>') +
                         '<button type="button" data-salon-del="' + esc(x.id) + '" class="text-red-700 font-bold hover:underline">حذف</button>' +
                     '</div>' +
@@ -2093,6 +2207,21 @@
         });
         sl.querySelectorAll('[data-salon-del]').forEach(function (b) {
             b.addEventListener('click', function () { deleteSalon(b.getAttribute('data-salon-del')); });
+        });
+        sl.querySelectorAll('[data-salon-home]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var sid = b.getAttribute('data-salon-home');
+                var d2 = fullDoc();
+                var t = salonById(d2, sid);
+                if (!t) return;
+                if (!t.home && d2.salons.filter(function (x) { return x.home && x.id !== sid; }).length >= 3) {
+                    toast('يمكنك تحديد ثلاثة صالونات للرئيسية كحد أقصى.', 'error');
+                    return;
+                }
+                t.home = !t.home;
+                saveDoc(d2); refresh();
+                toast(t.home ? 'يظهر الآن في الصفحة الرئيسية' : 'أُزيل من الصفحة الرئيسية', 'ok');
+            });
         });
     }
 
