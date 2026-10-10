@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    var KEY = 'matn_state_v1';
+    var KEY = 'matn_state_v2';
     var CLOUD = !!(window.MatnCloud && window.MatnCloud.configured());
     function cloudAr(e) {
         return (window.MatnCloud && window.MatnCloud.ar) ? window.MatnCloud.ar(e) : 'تعذّر إكمال العملية.';
@@ -68,47 +68,169 @@
     function catCls(i) { return (CATEGORIES[i] || CATEGORIES[0]).cls; }
     function catLabel(i) { return (CATEGORIES[i] || CATEGORIES[0]).label; }
 
-    /* ---------- الحالة ---------- */
-    function defaults() {
+    /* ---------- مخزن الحسابات والحالة ----------
+       الوثيقة المخزّنة تحمل: accounts (حساب لكل عضو) + session + عناصر مشتركة
+       (المقاعد، الشركاء، قسائم الشحن، التسجيل). و load() تُقدّم «منظراً» للكود
+       كما كان، فبقية الملف لا يتغير. */
+    function seedDoc() {
         return {
-            user: { points: 340 },
+            accounts: {},
+            session: null,
             seatsLeft: SESSION.seats,
-            booking: null,
             partners: SEED_PARTNERS.slice(),
             giftCodes: JSON.parse(JSON.stringify(SEED_CODES)),
-            vouchers: [],
-            ledger: [],
             recording: { title: '', url: '' }
         };
     }
+    function doc() {
+        try {
+            var raw = store.get(KEY);
+            var d = raw ? JSON.parse(raw) : null;
+            if (d && typeof d === 'object' && d.accounts) return d;
+        } catch (e) {}
+        return seedDoc();
+    }
+    function saveDoc(d) { try { store.set(KEY, JSON.stringify(d)); } catch (e) {} }
 
     var state = null;
 
     function load() {
         if (state) return state;
-        var d = defaults();
-        try {
-            var raw = store.get(KEY);
-            var s = raw ? JSON.parse(raw) : null;
-            if (s && typeof s === 'object') {
-                state = {
-                    user: { points: typeof s.user === 'object' && s.user && typeof s.user.points === 'number' ? s.user.points : d.user.points },
-                    seatsLeft: typeof s.seatsLeft === 'number' ? s.seatsLeft : d.seatsLeft,
-                    booking: s.booking || null,
-                    partners: Array.isArray(s.partners) && s.partners.length ? s.partners : d.partners,
-                    giftCodes: s.giftCodes && typeof s.giftCodes === 'object' ? s.giftCodes : d.giftCodes,
-                    vouchers: Array.isArray(s.vouchers) ? s.vouchers : [],
-                    ledger: Array.isArray(s.ledger) ? s.ledger : [],
-                    recording: s.recording && typeof s.recording === 'object' ? s.recording : d.recording
-                };
-            } else { state = d; }
-        } catch (e) { state = d; }
+        var d = doc();
+        var acc = (d.session && d.accounts[d.session]) ? d.accounts[d.session] : null;
+        state = {
+            signedIn: !!acc,
+            user: {
+                username: acc ? d.session : null,
+                name: acc ? (acc.name || d.session) : '',
+                points: acc ? (typeof acc.points === 'number' ? acc.points : 340) : 0,
+                isAdmin: !!(acc && acc.isAdmin)
+            },
+            seatsLeft: typeof d.seatsLeft === 'number' ? d.seatsLeft : SESSION.seats,
+            partners: Array.isArray(d.partners) && d.partners.length ? d.partners : SEED_PARTNERS.slice(),
+            giftCodes: d.giftCodes && typeof d.giftCodes === 'object' ? d.giftCodes : JSON.parse(JSON.stringify(SEED_CODES)),
+            recording: d.recording && typeof d.recording === 'object' ? d.recording : { title: '', url: '' },
+            booking: acc ? (acc.booking || null) : null,
+            vouchers: acc && Array.isArray(acc.vouchers) ? acc.vouchers : [],
+            ledger: acc && Array.isArray(acc.ledger) ? acc.ledger : []
+        };
         return state;
     }
-    function persist() { try { store.set(KEY, JSON.stringify(state)); } catch (e) {} }
+
+    function persist() {
+        var d = doc();
+        d.seatsLeft = state.seatsLeft;
+        d.partners = state.partners;
+        d.giftCodes = state.giftCodes;
+        d.recording = state.recording;
+        var u = state.user && state.user.username;
+        if (u && d.accounts[u]) {
+            d.accounts[u].points = state.user.points;
+            d.accounts[u].booking = state.booking;
+            d.accounts[u].vouchers = state.vouchers;
+            d.accounts[u].ledger = state.ledger;
+        }
+        d.session = u || null;
+        saveDoc(d);
+    }
+
     function change(fn) { fn(load()); persist(); render(); }
     function addPoints(delta) { load().user.points = Math.max(0, load().user.points + delta); }
     function record(reason, points) { load().ledger.unshift({ reason: reason, points: points, at: new Date().toISOString() }); }
+
+    /* ---------- الحسابات: تسجيل / دخول / خروج ---------- */
+    var AUTH_ERRORS = {
+        BAD_USERNAME: 'اسم المستخدم يجب أن يكون 3–24 حرفاً (حروف وأرقام ونقطة أو شرطة فقط).',
+        WEAK_PASSWORD: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.',
+        USERNAME_TAKEN: 'اسم المستخدم محجوز — اختر غيره.',
+        NO_ACCOUNT: 'لا يوجد حساب بهذا الاسم. أنشئ حساباً جديداً.',
+        WRONG_PASSWORD: 'كلمة المرور غير صحيحة.',
+        NEED_LOGIN: 'سجّل الدخول أولاً للمتابعة.',
+        EMAIL_TAKEN: 'اسم المستخدم محجوز — اختر غيره.'
+    };
+    function authMsg(e) {
+        if (!e) return 'تعذّر إكمال العملية.';
+        return AUTH_ERRORS[e.code] || AUTH_ERRORS[e.message] || e.message || 'تعذّر إكمال العملية.';
+    }
+
+    function normalizeUser(u) {
+        var s = String(u || '').trim().toLowerCase();
+        if (!/^[\p{L}\p{N}._-]{3,24}$/u.test(s)) return '';
+        return s;
+    }
+
+    function sha256(text) {
+        try {
+            if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+                return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (buf) {
+                    return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+                        return ('0' + b.toString(16)).slice(-2);
+                    }).join('');
+                });
+            }
+        } catch (e) {}
+        var h = 5381, i;
+        for (i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+        return Promise.resolve('f' + h.toString(16));
+    }
+
+    function createAccount(username, name, pass) {
+        var uname = normalizeUser(username);
+        if (!uname) return Promise.reject({ code: 'BAD_USERNAME' });
+        if (!pass || String(pass).length < 6) return Promise.reject({ code: 'WEAK_PASSWORD' });
+        var d = doc();
+        if (d.accounts[uname]) return Promise.reject({ code: 'USERNAME_TAKEN' });
+        return sha256(String(pass)).then(function (hash) {
+            d.accounts[uname] = {
+                name: String(name || '').trim() || uname,
+                hash: hash,
+                points: 340,                       // رصيد ترحيبي
+                ledger: [{ reason: 'رصيد ترحيبي عند التسجيل', points: 340, at: new Date().toISOString() }],
+                vouchers: [], booking: null,
+                isAdmin: Object.keys(d.accounts).length === 0,   // أول حساب = المشرف
+                createdAt: new Date().toISOString()
+            };
+            d.session = uname;
+            saveDoc(d);
+            state = null; load(); render();
+            return { username: uname, name: d.accounts[uname].name };
+        });
+    }
+
+    function signIn(username, pass) {
+        var uname = normalizeUser(username);
+        var d = doc();
+        var acc = d.accounts[uname];
+        if (!acc) return Promise.reject({ code: 'NO_ACCOUNT' });
+        return sha256(String(pass)).then(function (hash) {
+            if (hash !== acc.hash) throw { code: 'WRONG_PASSWORD' };
+            d.session = uname;
+            saveDoc(d);
+            state = null; load(); render();
+            return { username: uname, name: acc.name };
+        });
+    }
+
+    function signOut() {
+        var d = doc();
+        d.session = null;
+        saveDoc(d);
+        state = null; load(); render();
+        toast('تم تسجيل الخروج', 'info');
+    }
+
+    /* هل هذه العملية تحتاج تسجيل دخول؟ (في الوضع المحلي فقط — الوضع السحابي
+       يستخدم الخادم لهوية الزائر حتى نضيف حسابات Supabase) */
+    function needsLogin() { return !CLOUD && !load().signedIn; }
+
+    function requireLogin(what) {
+        modal({
+            title: 'يلزم تسجيل الدخول',
+            body: '<p class="text-xs text-matn-muted leading-relaxed">' + esc(what || 'هذه الميزة') +
+                  ' متاحة للأعضاء المسجّلين. التسجيل مفتوح ومجاني.</p>',
+            footer: '<a href="account.html" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">تسجيل الدخول / حساب جديد</a>' + okBtn('لاحقاً')
+        });
+    }
 
     /* ---------- تنبيه عائم ---------- */
     function toast(msg, kind) {
@@ -171,6 +293,7 @@
 
     /* حجز مقعد — يطلب الاسم والبريد ثم ينفّذ */
     function bookSeat() {
+        if (needsLogin()) { requireLogin('حجز مقعد في الصالون'); return; }
         var s = load();
         if (s.booking) { cancelBooking(); return; }
         if (s.seatsLeft <= 0) { toast('اكتمل عدد مقاعد الجلسة', 'error'); return; }
@@ -248,6 +371,7 @@
 
     /* شحن قسيمة هدية */
     function openGift() {
+        if (needsLogin()) { requireLogin('شحن قسيمة الهدية'); return; }
         modal({
             title: 'شحن قسيمة هدية',
             body:
@@ -310,6 +434,7 @@
 
     /* استبدال نقاط لدى شريك */
     function redeemPartner(id) {
+        if (needsLogin()) { requireLogin('استبدال النقاط لدى الشركاء'); return; }
         var s = load();
         var p = null, i;
         for (i = 0; i < s.partners.length; i++) if (s.partners[i].id === id) p = s.partners[i];
@@ -335,6 +460,8 @@
 
     /* لوحة الإشراف — إضافة شريك */
     function openAddPartner() {
+        if (needsLogin()) { requireLogin('لوحة الإشراف'); return; }
+        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return; }
         var opts = CATEGORIES.map(function (c, i) { return '<option value="' + i + '">' + esc(c.label) + '</option>'; }).join('');
         modal({
             title: 'إضافة شريك',
@@ -376,6 +503,8 @@
 
     /* لوحة الإشراف — توليد قسيمة شحن */
     function openGenCode() {
+        if (needsLogin()) { requireLogin('لوحة الإشراف'); return; }
+        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return; }
         modal({
             title: 'توليد قسيمة شحن',
             body:
@@ -410,6 +539,8 @@
 
     /* لوحة الإشراف — حفظ التسجيل المرئي */
     function saveRecording() {
+        if (needsLogin()) { requireLogin('لوحة الإشراف'); return; }
+        if (!load().user.isAdmin) { toast('هذه العملية متاحة للمشرف فقط.', 'error'); return; }
         var t = document.getElementById('recTitle');
         var u = document.getElementById('recUrl');
         var msg = document.getElementById('recMsg');
@@ -471,11 +602,38 @@
         var s = load();
 
         document.querySelectorAll('[data-matn-points]').forEach(function (el) {
-            el.textContent = num(s.user.points) + ' نقطة';
+            el.textContent = s.signedIn ? (num(s.user.points) + ' نقطة') : 'دخول';
         });
         document.querySelectorAll('[data-matn-points-only]').forEach(function (el) {
-            el.textContent = num(s.user.points);
+            el.textContent = s.signedIn ? num(s.user.points) : '—';
         });
+        var acctChip = document.getElementById('acctChip');
+        if (acctChip) acctChip.title = s.signedIn ? ('حسابي — ' + (s.user.name || s.user.username)) : 'تسجيل الدخول';
+
+        /* صفحة الحساب */
+        var siBox = document.getElementById('acctSignedIn');
+        var authBox = document.getElementById('acctAuth');
+        if (siBox && authBox) {
+            siBox.classList.toggle('hidden', !s.signedIn);
+            authBox.classList.toggle('hidden', !!s.signedIn);
+            if (s.signedIn) {
+                var nEl = siBox.querySelector('[data-acct-name]'); if (nEl) nEl.textContent = s.user.name || '—';
+                var uEl = siBox.querySelector('[data-acct-user]'); if (uEl) uEl.textContent = s.user.username || '—';
+            }
+        }
+
+        /* بوابة العضوية (المحفظة + لوحة الإشراف) */
+        var gate = document.getElementById('gateBox');
+        if (gate) {
+            var isAdminPage = !!document.getElementById('adminPartnerList');
+            var locked = needsLogin() || (isAdminPage && !s.user.isAdmin);
+            gate.classList.toggle('hidden', !locked);
+            var gTitle = gate.querySelector('h2');
+            if (gTitle) gTitle.textContent = (isAdminPage && s.signedIn) ? 'هذه الصفحة للمشرف' : 'هذه الصفحة للأعضاء';
+            Array.prototype.forEach.call(gate.parentElement.children, function (ch) {
+                if (ch !== gate) ch.classList.toggle('hidden', locked);
+            });
+        }
 
         /* الجلسة والحجز */
         document.querySelectorAll('[data-matn-seats]').forEach(function (el) {
@@ -652,9 +810,50 @@
         else if (a === 'generate-code') openGenCode();
         else if (a === 'play-recording') playRecording();
         else if (a === 'save-recording') saveRecording();
+        else if (a === 'signout') standaloneSignOut();
     });
 
+    /* ---------- ربط صفحة الحساب ---------- */
+    function standaloneSignOut() {
+        signOut();
+        window.setTimeout(function () { window.location.href = 'index.html'; }, 500);
+    }
+
+    function wireAccountPage() {
+        var li = document.getElementById('loginForm');
+        if (li) li.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var msg = document.getElementById('liMsg');
+            msg.textContent = 'جارٍ التحقق…'; msg.className = 'text-xs text-matn-muted';
+            signIn(document.getElementById('liUser').value, document.getElementById('liPass').value)
+                .then(function (acc) {
+                    toast('مرحباً ' + acc.name, 'ok');
+                    window.setTimeout(function () { window.location.href = 'index.html'; }, 700);
+                })
+                .catch(function (err) { msg.textContent = authMsg(err); msg.className = 'text-xs text-red-700'; });
+        });
+
+        var rg = document.getElementById('regForm');
+        if (rg) rg.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var msg = document.getElementById('rgMsg');
+            var p = document.getElementById('rgPass').value;
+            if (p !== document.getElementById('rgPass2').value) {
+                msg.textContent = 'كلمتا المرور غير متطابقتين.'; msg.className = 'text-xs text-red-700'; return;
+            }
+            msg.textContent = 'جارٍ إنشاء الحساب…'; msg.className = 'text-xs text-matn-muted';
+            createAccount(document.getElementById('rgUser').value, document.getElementById('rgName').value, p)
+                .then(function (acc) {
+                    toast('أُنشئ حسابك — مرحباً ' + acc.name, 'ok');
+                    window.setTimeout(function () { window.location.href = 'wallet.html'; }, 700);
+                })
+                .catch(function (err) { msg.textContent = authMsg(err); msg.className = 'text-xs text-red-700'; });
+        });
+    }
+
+    function boot() { wireAccountPage(); refresh(); }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', refresh);
-    } else { refresh(); }
+        document.addEventListener('DOMContentLoaded', boot);
+    } else { boot(); }
 })();
