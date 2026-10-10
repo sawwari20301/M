@@ -110,6 +110,21 @@
         if (ov) ov.classList.remove('is-on');
     }
 
+    var VENUE_KINDS = [
+        { key: 'cafe', label: 'كوفي', icon: '☕' },
+        { key: 'hall', label: 'صالة', icon: '🏛' },
+        { key: 'library', label: 'مكتبة', icon: '📚' },
+        { key: 'other', label: 'مكان آخر', icon: '📍' }
+    ];
+    function venueKind(k) {
+        for (var i = 0; i < VENUE_KINDS.length; i++) if (VENUE_KINDS[i].key === k) return VENUE_KINDS[i];
+        return VENUE_KINDS[0];
+    }
+    function venueText(s) {
+        if (!s || !s.venue) return '';
+        return venueKind(s.venueKind).icon + ' ' + s.venue + (s.city ? (' — ' + s.city) : '');
+    }
+
     /* ---------- فروعنا: كل مدن المملكة ---------- */
     var SA_CITIES = ('الرياض,الخرج,الدرعية,المزاحمية,ضرما,حريملاء,ثادق,الغاط,شقراء,المجمعة,الزلفي,الدوادمي,الأفلاج,وادي الدواسر,' +
         'حوطة بني تميم,السليل,الدلم,رماح,القويعية,الحريق,حوطة سدير,روضة سدير,تمير,جلاجل,' +
@@ -353,13 +368,22 @@
     }
     function saveDoc(d) { try { store.set(KEY, JSON.stringify(d)); } catch (e) {} }
 
-    /* ---------- الصالونات: قائمة واحدة، واحد منها «القادم» ---------- */
+    /* الصالون المعروض: **الأقرب موعداً** تلقائياً، ثم الذي يليه بعده */
     function featuredSalon(d) {
         var l = (d && d.salons) || [];
         if (!l.length) return null;
-        for (var i = 0; i < l.length; i++) if (l[i].featured) return l[i];
-        l[0].featured = true;
-        return l[0];
+        var now = Date.now();
+        var upcoming = l.filter(function (x) { return x.startsAt && new Date(x.startsAt).getTime() >= now; });
+        if (upcoming.length) {
+            upcoming.sort(function (a, b) { return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(); });
+            return upcoming[0];
+        }
+        var past = l.filter(function (x) { return x.startsAt; });
+        if (past.length && past.length === l.length) {
+            past.sort(function (a, b) { return new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime(); });
+            return past[0];
+        }
+        return l.filter(function (x) { return x.featured; })[0] || l[0];
     }
     function salonById(d, id) {
         var l = (d && d.salons) || [];
@@ -370,8 +394,9 @@
     function takenOf(d, sid) {
         var n = 0;
         Object.keys(d.accounts || {}).forEach(function (u) {
-            var b = d.accounts[u].booking;
-            if (b && (!b.salonId || b.salonId === sid)) n++;
+            var bk = d.accounts[u].bookings || {};
+            if (bk[sid]) n++;
+            else if (d.accounts[u].booking && d.accounts[u].booking.salonId === sid) n++;
         });
         return n;
     }
@@ -409,7 +434,9 @@
             if (typeof x.city !== 'string') { x.city = ''; dirty = true; }
             if (typeof x.branchId !== 'string') { x.branchId = ''; dirty = true; }
             if (!(x.durationMin > 0)) { x.durationMin = 90; dirty = true; }
-            if (typeof x.home !== 'boolean') { x.home = false; dirty = true; }
+            if (typeof x.venue !== 'string') { x.venue = ''; dirty = true; }
+            if (typeof x.venueKind !== 'string') { x.venueKind = 'cafe'; dirty = true; }
+            if (typeof x.venueLink !== 'string') { x.venueLink = ''; dirty = true; }
         });
         Object.keys(d.accounts || {}).forEach(function (u) {
             var a = d.accounts[u];
@@ -418,6 +445,12 @@
             if (!Array.isArray(a.perms)) { a.perms = []; dirty = true; }
             /* حجز قديم بلا صالون → يُنسب للصالون القادم */
             if (a.booking && !a.booking.salonId && feat) { a.booking.salonId = feat.id; dirty = true; }
+            if (!a.bookings || typeof a.bookings !== 'object') { a.bookings = {}; dirty = true; }
+            if (a.booking) {
+                if (a.booking.salonId) a.bookings[a.booking.salonId] = a.booking;
+                delete a.booking;
+                dirty = true;
+            }
             /* مشرف واحد فقط: أول مشرف = المشرف العام */
         });
         var admins = Object.keys(d.accounts || {}).filter(function (u) { return d.accounts[u].isAdmin; });
@@ -436,6 +469,22 @@
         if (!d.book || typeof d.book !== 'object') { d.book = { title: '', author: '', cover: '', desc: '', url: '' }; dirty = true; }
         if (!Array.isArray(d.posts)) { d.posts = []; dirty = true; }
         if (typeof d.poll === 'undefined') { d.poll = null; dirty = true; }
+        if (!Array.isArray(d.messages)) { d.messages = []; dirty = true; }
+        Object.keys(d.accounts || {}).forEach(function (u) {
+            var a = d.accounts[u];
+            if (typeof a.avatar !== 'string') { a.avatar = ''; dirty = true; }
+            if (typeof a.minutes !== 'number') { a.minutes = 0; dirty = true; }
+        });
+        /* حساب الدعم الفني (نظامي — لا يستطيع تسجيل الدخول) */
+        if (!d.accounts.support) {
+            d.accounts.support = {
+                name: 'الدعم الفني لنادي القراءة', hash: '', points: 0,
+                ledger: [], vouchers: [], bookings: {}, isAdmin: false, super: false,
+                perms: [], system: true, avatar: '', minutes: 0,
+                createdAt: new Date().toISOString()
+            };
+            dirty = true;
+        }
         if (dirty) saveDoc(d);
         return d;
     }
@@ -469,9 +518,23 @@
             book: d.book || { title: '', author: '', cover: '', desc: '', url: '' },
             posts: d.posts || [],
             poll: d.poll || null,
+            messages: d.messages || [],
+            accounts: d.accounts || {},
+            canMessage: (function () {
+                if (!acc) return false;
+                if (acc.system) return false;
+                if (acc.super || acc.isAdmin) return true;
+                return (acc.points || 0) >= 500;
+            })(),
+            myStats: acc ? {
+                points: acc.points || 0, minutes: acc.minutes || 0,
+                replies: (d.posts || []).filter(function (p) { return p.user === d.authUser; }).length,
+                avatar: acc.avatar || ''
+            } : null,
             giftCodes: d.giftCodes && typeof d.giftCodes === 'object' ? d.giftCodes : JSON.parse(JSON.stringify(SEED_CODES)),
             recording: d.recording && typeof d.recording === 'object' ? d.recording : { title: '', url: '' },
-            booking: acc ? (acc.booking || null) : null,
+            myBookings: acc ? (acc.bookings || {}) : {},
+            booking: (acc && acc.bookings && feat) ? (acc.bookings[feat.id] || null) : null,
             vouchers: acc && Array.isArray(acc.vouchers) ? acc.vouchers : [],
             ledger: acc && Array.isArray(acc.ledger) ? acc.ledger : []
         };
@@ -488,10 +551,11 @@
         d.book = state.book;
         d.posts = state.posts;
         d.poll = state.poll;
+        d.messages = state.messages || [];
         var u = state.user && state.user.username;
         if (u && d.accounts[u]) {
             d.accounts[u].points = state.user.points;
-            d.accounts[u].booking = state.booking;
+            d.accounts[u].bookings = state.myBookings || {};
             d.accounts[u].vouchers = state.vouchers;
             d.accounts[u].ledger = state.ledger;
         }
@@ -549,13 +613,14 @@
         var d = doc();
         if (d.accounts[uname]) return Promise.reject({ code: 'USERNAME_TAKEN' });
         return sha256(String(pass)).then(function (hash) {
-            var first = Object.keys(d.accounts).length === 0;
+            var first = !Object.keys(d.accounts).some(function (u) { return !d.accounts[u].system; });
             d.accounts[uname] = {
                 name: String(name || '').trim() || uname,
                 hash: hash,
                 points: 340,                       // رصيد ترحيبي
                 ledger: [{ reason: 'رصيد ترحيبي عند التسجيل', points: 340, at: new Date().toISOString() }],
-                vouchers: [], booking: null,
+                vouchers: [], bookings: {},
+                avatar: '', minutes: 0,
                 isAdmin: first,                  // أول حساب = المشرف
                 super: first,                    // وهو «المشرف العام» دائماً
                 perms: first ? ALL_PERMS.slice() : [],
@@ -626,8 +691,15 @@
     /* الصالون الذي حجز فيه العضو الحالي */
     function bookedSalon() {
         var s = load();
-        if (!s.booking) return null;
-        return salonById(fullDoc(), s.booking.salonId) || s.salon;
+        var d = fullDoc();
+        var bk = s.myBookings || {};
+        var ids = Object.keys(bk);
+        if (!ids.length) return null;
+        if (s.salon && bk[s.salon.id]) return salonById(d, s.salon.id) || s.salon;
+        var cands = ids.map(function (id) { return salonById(d, id); }).filter(Boolean)
+            .filter(function (x) { return x.startsAt && new Date(x.startsAt).getTime() >= Date.now(); })
+            .sort(function (a, b2) { return new Date(a.startsAt) - new Date(b2.startsAt); });
+        return cands[0] || salonById(d, ids[0]) || null;
     }
     /* تفعيل إشعار المتصفح (يحتاج إبقاء الصفحة مفتوحة) */
     function armBrowserReminder() {
@@ -657,7 +729,8 @@
         var d = fullDoc();
         var s = load();
         var mine = (d.authUser && d.accounts[d.authUser]) ? d.accounts[d.authUser] : null;
-        var phone = (mine && mine.phone) || (s.booking && s.booking.phone) || '';
+        var bs0 = bookedSalon();
+        var phone = (mine && mine.phone) || ((bs0 && s.myBookings && s.myBookings[bs0.id]) ? s.myBookings[bs0.id].phone : '') || '';
         var link = waLink(phone, reminderText(salon));
         if (link) {
             return '<div class="bg-white/70 border border-emerald-200 rounded-xl p-3 space-y-2">' +
@@ -685,10 +758,51 @@
         var d = fullDoc();
         var u = d.authUser;
         if (u && d.accounts[u]) d.accounts[u].phone = p;
-        if (u && d.accounts[u] && d.accounts[u].booking) d.accounts[u].booking.phone = p;
+        if (u && d.accounts[u] && d.accounts[u].bookings) {
+            Object.keys(d.accounts[u].bookings).forEach(function (k) { d.accounts[u].bookings[k].phone = p; });
+        }
         var g = readGuest(); saveGuest(g.name || '', g.email || '', p);
         saveDoc(d); refresh();
         toast('حُفظ رقم الواتساب', 'ok');
+    }
+
+    /* صورة العضو الشخصية */
+    function avatarForm() {
+        if (needsLogin()) { requireLogin('الصورة الشخصية'); return; }
+        var d = fullDoc();
+        var a = d.accounts[d.authUser] || {};
+        var pic = a.avatar || '';
+        modal({
+            title: 'صورتي الشخصية',
+            body: '<p class="text-xs text-matn-muted mb-3">تظهر في «وسام التميّز» وفي الرسائل الخاصة.</p>' +
+                  '<input type="file" id="avFile" accept="image/*" class="hidden">' +
+                  '<div class="flex flex-wrap items-center gap-3">' +
+                    '<img id="avPrev" alt="" class="w-20 h-20 rounded-full object-cover border border-matn-sand ' + (pic ? '' : 'hidden') + '" src="' + esc(pic) + '">' +
+                    '<button type="button" id="avPick" class="matn-preset">📁 اختر صورة من جهازك</button>' +
+                    '<button type="button" id="avDel" class="matn-preset">إزالة</button>' +
+                  '</div><p id="avMsg" class="text-xs mt-2"></p>',
+            footer: '<button type="button" id="avGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                var prev = w.querySelector('#avPrev');
+                w.querySelector('#avPick').addEventListener('click', function () { w.querySelector('#avFile').click(); });
+                w.querySelector('#avFile').addEventListener('change', function (ev) {
+                    var f = ev.target.files && ev.target.files[0];
+                    if (!f) return;
+                    var m = w.querySelector('#avMsg'); m.textContent = 'جارٍ تجهيز الصورة…'; m.className = 'text-xs text-matn-muted';
+                    compressImage(f, 240, 0.85).then(function (url) {
+                        pic = url; prev.src = url; prev.classList.remove('hidden');
+                        m.textContent = 'حُضّرت الصورة — اضغط حفظ.'; m.className = 'text-xs text-emerald-700';
+                    }).catch(function () { m.textContent = 'تعذّر قراءة الصورة.'; m.className = 'text-xs text-red-700'; });
+                });
+                w.querySelector('#avDel').addEventListener('click', function () { pic = ''; prev.removeAttribute('src'); prev.classList.add('hidden'); });
+                w.querySelector('#avGo').addEventListener('click', function () {
+                    var nd = fullDoc();
+                    if (nd.accounts[nd.authUser]) nd.accounts[nd.authUser].avatar = pic;
+                    saveDoc(nd); closeModal(); refresh();
+                    toast('حُفظت صورتك', 'ok');
+                });
+            }
+        });
     }
 
     /* نسخ نص التذكير للصقه في واتساب */
@@ -718,8 +832,7 @@
         if (isNaN(d.getTime())) return '';
         var h = d.getHours(), mm = d.getMinutes(), h12 = h % 12;
         if (h12 === 0) h12 = 12;
-        return AR_DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + AR_MONTHS[d.getMonth()] +
-               ' • ' + h12 + ':' + (mm < 10 ? '0' + mm : mm) + ' ' + (h < 12 ? 'صباحاً' : 'مساءً');
+        return AR_DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + AR_MONTHS[d.getMonth()];
     }
 
     /* نافذة تأكيد */
@@ -742,7 +855,7 @@
         var a = d.accounts[uname];
         if (!a) return;
         if (a.super) { toast('لا يمكن حذف المشرف العام.', 'error'); return; }
-        var booked = !!a.booking;
+        var booked = a.bookings && Object.keys(a.bookings).length > 0;
         confirmBox('حذف العضو', 'سيُحذف حساب «' + a.name + '» نهائياً' + (booked ? '، ويُلغى حجزه ويُفرغ مقعده' : '') + '. لا يمكن التراجع.', function () {
             delete d.accounts[uname];
             if (d.authUser === uname) d.authUser = null;
@@ -756,9 +869,11 @@
         if (!needPerm('bookings', 'الحجوزات')) return;
         var d = doc();
         var a = d.accounts[uname];
-        if (!a || !a.booking) return;
-        confirmBox('إلغاء الحجز', 'سيُلغى حجز «' + a.name + '» (تذكرة ' + a.booking.code + ') ويُفرغ المقعد.', function () {
-            a.booking = null;
+        var bks = (a && a.bookings) || {};
+        if (!a || !Object.keys(bks).length) return;
+        var codes = Object.keys(bks).map(function (k) { return bks[k].code; }).join(' ، ');
+        confirmBox('إلغاء الحجوزات', 'ستُلغى كل حجوزات «' + a.name + '» (' + Object.keys(bks).length + ' حجز: ' + codes + ') وتُفرَّغ مقاعدها.', function () {
+            a.bookings = {};
             saveDoc(d); refresh();
             toast('أُلغي الحجز وأُفرغ المقعد', 'ok');
         }, 'إلغاء الحجز');
@@ -860,7 +975,7 @@
                             return '<option value="' + m + '"' + ((v.reminderMin || 60) === m ? ' selected' : '') + '>' + remindLabel(m) + '</option>';
                         }).join('') +
                     '</select></label>' +
-                    '<label class="matn-field"><span>الموعد المعروض للزوار (اتركه فارغاً ليُكتب من اليوم والساعة)</span><input class="matn-input" id="sfWhen" type="text" value="' + esc(v.when) + '" placeholder="يُكتب تلقائياً"></label>' +
+                    '<label class="matn-field"><span>الموعد المعروض (اكتب التاريخ بلا وقت — الوقت يُحسب تلقائياً من اليوم والساعة والمدة)</span><input class="matn-input" id="sfWhen" type="text" value="' + esc(v.when) + '" placeholder="يُكتب تلقائياً"></label>' +
                     '<label class="matn-field"><span>نوع المجلس</span><select class="matn-input" id="sfMode">' +
                         MODES.map(function (m) {
                             return '<option value="' + m.key + '"' + ((v.mode || 'hybrid') === m.key ? ' selected' : '') + '>' + m.label + '</option>';
@@ -868,9 +983,20 @@
                     '</select></label>' +
                     '<label class="matn-field"><span>الميسّر</span><input class="matn-input" id="sfFac" type="text" value="' + esc(v.facilitator) + '"></label>' +
                     '<label class="matn-field sm:col-span-2"><span>رابط الاجتماع — يظهر للمحجوزين فقط (Zoom أو أي رابط)</span><input class="matn-input" id="sfLink" type="url" value="' + esc(v.link || '') + '" placeholder="https://zoom.us/j/123456789"></label>' +
-                    '<label class="matn-field sm:col-span-2"><span>المكان</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '"></label>' +
+                    '<label class="matn-field sm:col-span-2"><span>📍 مكان اللقاء — الكوفي أو الصالة</span>' +
+                        '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">' +
+                            '<select class="matn-input" id="sfVenueKind">' +
+                                VENUE_KINDS.map(function (k) {
+                                    return '<option value="' + k.key + '"' + ((v.venueKind || 'cafe') === k.key ? ' selected' : '') + '>' + k.icon + ' ' + k.label + '</option>';
+                                }).join('') +
+                            '</select>' +
+                            '<input class="matn-input sm:col-span-2" id="sfVenue" type="text" value="' + esc(v.venue || '') + '" placeholder="كوفي صوفيا - حي الياسمين">' +
+                        '</div>' +
+                        '<input class="matn-input mt-2" id="sfVenueLink" type="url" value="' + esc(v.venueLink || '') + '" placeholder="📍 رابط موقع المكان على خرائط Google (اختياري)">' +
+                    '</label>' +
+                    '<label class="matn-field sm:col-span-2"><span>المكان المعروض للزوار (اتركه فارغاً ليكتب تلقائياً من مكان اللقاء)</span><input class="matn-input" id="sfWhere" type="text" value="' + esc(v.where) + '" placeholder="يُكتب تلقائياً"></label>' +
                     '<label class="matn-field"><span>عدد المقاعد</span><input class="matn-input" id="sfCap" type="number" min="1" step="1" value="' + (v.capacity || 6) + '"></label>' +
-                    '<label class="flex items-center gap-2 text-xs sm:col-span-2 bg-matn-cream border border-matn-sand rounded-xl px-3 py-2.5"><input type="checkbox" id="sfHome"' + (v.home ? ' checked' : '') + '> <span>اعرضه في الصفحة الرئيسية (حتى 3 صالونات)</span></label>' +
+                    '<label class="flex items-center gap-2 text-xs sm:col-span-2 bg-matn-cream border border-matn-sand rounded-xl px-3 py-2.5"><span>الصفحة الرئيسية تعرض الصالون <strong>الأقرب موعداً</strong> تلقائياً، ثم الذي يليه بعده — بلا اختيار يدوي.</span></label>' +
                   '</div><p id="sfMsg" class="text-xs"></p>',
             footer: '<button type="button" id="sfGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">حفظ</button>' + okBtn('إلغاء'),
             ready: function (w) {
@@ -936,13 +1062,22 @@
                     var startISO = whenISO(w.querySelector('#sfStart').value);
                     var whenTxt = w.querySelector('#sfWhen').value.trim();
                     if (!whenTxt && startISO) whenTxt = arabicWhen(startISO);
+                    var venue = (w.querySelector('#sfVenue').value || '').trim();
+                    var vk = w.querySelector('#sfVenueKind').value || 'cafe';
+                    var whereField = w.querySelector('#sfWhere').value.trim();
+                    var venueDisplay = venue ? (venueKind(vk).icon + ' ' + venue + (w.querySelector('#sfCity').value ? (' — ' + w.querySelector('#sfCity').value) : '')) : '';
+                    /* إن كتب المشرف «المكان المعروض» بنفسه فهو الأول؛ وإلا يَغلِب مكان اللقاء */
+                    var whereTxt = (whereField && whereField !== String(v.where || '')) ? whereField : (venueDisplay || whereField);
                     var data = {
                         title: t,
                         when: whenTxt,
                         desc: (w.querySelector('#sfDesc').value || '').trim(),
                         poster: posterVal,
                         facilitator: w.querySelector('#sfFac').value.trim(),
-                        where: w.querySelector('#sfWhere').value.trim(),
+                        where: whereTxt,
+                        venue: venue,
+                        venueKind: vk,
+                        venueLink: safeUrl(w.querySelector('#sfVenueLink').value),
                         capacity: cap,
                         mode: w.querySelector('#sfMode').value,
                         link: safeUrl(w.querySelector('#sfLink').value),
@@ -950,14 +1085,8 @@
                         durationMin: parseInt(w.querySelector('#sfDur').value, 10) || 90,
                         city: (citySel ? citySel.value : '') || '',
                         branchId: (brSel ? brSel.value : '') || '',
-                        home: !!(w.querySelector('#sfHome') && w.querySelector('#sfHome').checked),
                         reminderMin: parseInt(w.querySelector('#sfRemind').value, 10) || 60
                     };
-                    var marked = doc2.salons.filter(function (x) { return x.home && x.id !== id; }).length;
-                    if (data.home && marked >= 3) {
-                        m.textContent = 'يمكنك تحديد ثلاثة صالونات للصفحة الرئيسية كحد أقصى.';
-                        m.className = 'text-xs text-red-700'; return;
-                    }
                     if (isNew) {
                         data.id = newSalonId(doc2);
                         data.featured = doc2.salons.length === 0;
@@ -965,7 +1094,7 @@
                         doc2.salons.push(data);
                     } else {
                         var t2 = salonById(doc2, id);
-                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; t2.durationMin = data.durationMin; t2.city = data.city; t2.branchId = data.branchId; t2.home = data.home; }
+                        if (t2) { t2.title = data.title; t2.when = data.when; t2.desc = data.desc; t2.poster = data.poster; t2.facilitator = data.facilitator; t2.where = data.where; t2.capacity = data.capacity; t2.mode = data.mode; t2.link = data.link; t2.startsAt = data.startsAt; t2.reminderMin = data.reminderMin; t2.durationMin = data.durationMin; t2.city = data.city; t2.branchId = data.branchId; t2.venue = data.venue; t2.venueKind = data.venueKind; t2.venueLink = data.venueLink; }
                     }
                     saveDoc(doc2);
                     closeModal(); refresh();
@@ -990,7 +1119,7 @@
         var s = salonById(d, id);
         if (!s) return;
         var booked = 0;
-        Object.keys(d.accounts).forEach(function (u) { var b = d.accounts[u].booking; if (b && b.salonId === id) booked++; });
+        Object.keys(d.accounts).forEach(function (u) { if (d.accounts[u].bookings && d.accounts[u].bookings[id]) booked++; });
         confirmBox('حذف الصالون', 'سيُحذف «' + s.title + '»' +
             (booked ? ' — وله ' + num(booked) + ' حجز قائم سيُلغى وتُفرَّغ مقاعده' : '') + '. لا يمكن التراجع.', function () {
             var d2 = fullDoc();
@@ -999,8 +1128,7 @@
                 if (other) other.featured = true;
             }
             Object.keys(d2.accounts).forEach(function (u) {
-                var b = d2.accounts[u].booking;
-                if (b && b.salonId === id) d2.accounts[u].booking = null;
+                if (d2.accounts[u].bookings && d2.accounts[u].bookings[id]) delete d2.accounts[u].bookings[id];
             });
             d2.salons = d2.salons.filter(function (x) { return x.id !== id; });
             saveDoc(d2); refresh();
@@ -1039,7 +1167,8 @@
                             name: name || uname, hash: hash,
                             points: Math.max(0, pts),
                             ledger: [{ reason: 'حساب أُنشئ من لوحة التحكم', points: Math.max(0, pts), at: new Date().toISOString() }],
-                            vouchers: [], booking: null,
+                            vouchers: [], bookings: {},
+                            avatar: '', minutes: 0,
                             isAdmin: perms.length > 0, super: false, perms: perms,
                             createdAt: new Date().toISOString()
                         };
@@ -1280,10 +1409,12 @@
         var salon = load().salon || {};
         var ph = phone || '';
         change(function (st) {
-            st.booking = {
+            var bk = st.myBookings || (st.myBookings = {});
+            bk[salon.id] = {
                 code: code, at: new Date().toISOString(), salonId: salon.id,
                 title: salon.title, when: salon.when, where: salon.where, phone: ph
             };
+            st.booking = bk[salon.id];
         });
         if (ph) {
             var dd = fullDoc();
@@ -1299,7 +1430,10 @@
         }
         var s = load();
         if (!s.booking) return;
-        change(function (st) { st.booking = null; });
+        change(function (st) {
+            if (st.myBookings && st.salon) delete st.myBookings[st.salon.id];
+            st.booking = null;
+        });
         toast('تم إلغاء الحجز وإعادة المقعد', 'info');
     }
 
@@ -1552,6 +1686,14 @@
                 var uEl = siBox.querySelector('[data-acct-user]'); if (uEl) uEl.textContent = s.user.username || '—';
                 var rEl = siBox.querySelector('[data-acct-role]');
                 if (rEl) rEl.textContent = s.user.super ? 'المشرف العام' : (s.user.isAdmin ? 'مشرف' : 'عضو');
+                var ms0 = s.myStats || {};
+                var hrsEl = siBox.querySelector('[data-acct-hours]'); if (hrsEl) hrsEl.textContent = hoursText(ms0.minutes || 0);
+                var rpEl = siBox.querySelector('[data-acct-replies]'); if (rpEl) rpEl.textContent = num(ms0.replies || 0);
+                var avEl = document.getElementById('acctAvatar');
+                if (avEl) {
+                    var au = safeImg(ms0.avatar || '');
+                    if (au) { avEl.src = au; avEl.classList.remove('hidden'); } else { avEl.removeAttribute('src'); avEl.classList.add('hidden'); }
+                }
             }
             var admLink = document.getElementById('acctAdminLink');
             if (admLink) admLink.classList.toggle('hidden', !(s.signedIn && s.user.isAdmin));
@@ -1610,6 +1752,23 @@
                     '</div>';
             } else { ticket.classList.add('hidden'); ticket.innerHTML = ''; }
         }
+        /* حجوزات العضو في جلسات أخرى (لكل صالون حجزه) */
+        var others = document.getElementById('otherBookings');
+        if (others) {
+            var mybk = s.myBookings || {};
+            var list = Object.keys(mybk).filter(function (k) { return k !== (s.salon && s.salon.id); }).map(function (k) { return mybk[k]; });
+            if (list.length) {
+                others.classList.remove('hidden');
+                others.innerHTML = '<div class="text-[11px] font-bold text-matn-emerald mb-2">حجوزاتك في جلسات أخرى</div>' +
+                    '<div class="space-y-2">' + list.map(function (b) {
+                        return '<div class="p-3 rounded-xl border border-matn-sand bg-white text-[11px]">' +
+                            '<strong>' + esc(b.title || '') + '</strong> · <span class="matn-code">' + esc(b.code || '') + '</span>' +
+                            (b.when ? ('<div class="text-matn-muted mt-0.5">' + esc(b.when) + (b.where ? (' · ' + esc(b.where)) : '') + '</div>') : '') +
+                        '</div>';
+                    }).join('') + '</div>';
+            } else { others.classList.add('hidden'); others.innerHTML = ''; }
+        }
+
         var idxCta = document.getElementById('indexCardCta');
         if (idxCta) idxCta.textContent = s.booking ? '✓ مقعدك محجوز — عرض التذكرة' : 'تأكيد حجز مقعدك ←';
 
@@ -1683,6 +1842,11 @@
         document.querySelectorAll('[data-session-title]').forEach(function (el) { if (salon.title) el.textContent = salon.title; });
         document.querySelectorAll('[data-session-when]').forEach(function (el) { if (salon.when) el.textContent = salon.when; });
         document.querySelectorAll('[data-session-where]').forEach(function (el) { if (salon.where) el.textContent = salon.where; });
+        document.querySelectorAll('[data-session-venuelink]').forEach(function (el) {
+            var vl = safeUrl(salon.venueLink);
+            if (vl) { el.classList.remove('hidden'); el.innerHTML = '<a href="' + esc(vl) + '" target="_blank" rel="noopener" class="text-matn-emerald font-bold whitespace-nowrap">📍 موقع مكان اللقاء ↗</a>'; }
+            else { el.classList.add('hidden'); el.innerHTML = ''; }
+        });
         document.querySelectorAll('[data-session-facilitator]').forEach(function (el) { if (salon.facilitator) el.textContent = salon.facilitator; });
         document.querySelectorAll('[data-session-mode]').forEach(function (el) { el.textContent = modeLabel(salon.mode); });
 
@@ -1719,7 +1883,8 @@
                 if (!br) { el.classList.add('hidden'); el.innerHTML = ''; return; }
                 var lk = safeUrl(br.link);
                 el.classList.remove('hidden');
-                el.innerHTML = '<strong>الفرع:</strong> ' + esc(br.name) + ' · ' + esc(br.city) +
+                var brName = (br.name && br.city && br.name !== br.city) ? (esc(br.name) + ' · ' + esc(br.city)) : esc(br.name || br.city);
+                el.innerHTML = '<strong>الفرع:</strong> ' + brName +
                     ' <span class="text-[10px] bg-matn-creamDark border border-matn-sand rounded-full px-2 py-0.5">' + brModeLabel(br.mode) + '</span>' +
                     (lk ? ' <a href="' + esc(lk) + '" target="_blank" rel="noopener" class="text-matn-emerald font-bold whitespace-nowrap">📍 الموقع ↗</a>' : '');
             });
@@ -1739,7 +1904,7 @@
         if (rb) {
             var bs = bookedSalon();
             var cd = bs ? countdown(bs.startsAt) : null;
-            var isMine = !!s.booking && !!bs && s.booking.salonId === bs.id;
+            var isMine = !!bs && !!(s.myBookings && s.myBookings[bs.id]);
             var slink = bs ? safeUrl(bs.link) : '';
             if (s.signedIn && isMine && cd) {
                 rb.classList.remove('hidden');
@@ -1791,7 +1956,7 @@
         if (statMembers) {
             var D = doc();
             var users = Object.keys(D.accounts);
-            var bookedUsers = users.filter(function (u) { return D.accounts[u].booking; });
+            var bookedUsers = users.filter(function (u) { return D.accounts[u].bookings && Object.keys(D.accounts[u].bookings).length; });
             var spentTotal = 0;
             users.forEach(function (u) {
                 (D.accounts[u].vouchers || []).forEach(function (v) { spentTotal += v.cost; });
@@ -1806,7 +1971,7 @@
             if (ml) {
                 ml.innerHTML = users.length ? users.map(function (u) {
                     var a = D.accounts[u];
-                    var role = a.super ? 'المشرف العام' : ((a.perms && a.perms.length) ? 'مدير' : 'عضو');
+                    var role = a.system ? 'الدعم الفني' : (a.super ? 'المشرف العام' : ((a.perms && a.perms.length) ? 'مدير' : 'عضو'));
                     var roleCls = a.super ? 'bg-matn-gold/25 text-matn-emerald' : ((a.perms && a.perms.length) ? 'bg-emerald-100 text-emerald-800' : 'bg-matn-creamDark text-matn-muted');
                     return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
                         '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
@@ -1814,13 +1979,15 @@
                         '<span class="flex flex-wrap items-center gap-3">' +
                             '<span class="font-bold text-matn-emerald">' + num(a.points) + ' نقطة</span>' +
                             '<button type="button" data-grant="' + esc(u) + '" class="text-matn-emerald font-bold hover:underline">منح / خصم</button>' +
-                            (a.booking ? '<button type="button" data-cxl="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">إلغاء الحجز</button>' : '') +
+                            ((a.bookings && Object.keys(a.bookings).length) ? '<button type="button" data-cxl="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">إلغاء الحجوزات</button>' : '') +
                             '<button type="button" data-rp="' + esc(u) + '" class="text-matn-muted font-bold hover:underline">كلمة مرور</button>' +
                             (a.phone ? '<a href="' + esc(waLink(a.phone, reminderText(salon))) + '" target="_blank" rel="noopener" class="text-[#128C7E] font-bold hover:underline">واتساب</a>' : '<span class="text-matn-muted text-[10px]">بلا رقم</span>') +
-                            (a.super ? '' : '<button type="button" data-del="' + esc(u) + '" class="text-red-700 font-bold hover:underline">حذف</button>') +
+                            ((a.super || a.system) ? '' : '<button type="button" data-del="' + esc(u) + '" class="text-red-700 font-bold hover:underline">حذف</button>') +
                         '</span>' +
                         '<div class="w-full flex flex-wrap items-center gap-2 mt-2">' +
-                            (a.super
+                            (a.system
+                                ? '<span class="text-[11px] text-matn-muted">حساب نظامي — تستقبل رسائل الأعضاء وتُقرأ في لوحة المشرف العام.</span>'
+                                : a.super
                                 ? '<span class="text-[11px] text-matn-muted">كل الصلاحيات — لا تُسحب من المشرف العام.</span>'
                                 : PERMS.map(function (p) {
                                     var on = (a.perms || []).indexOf(p.key) !== -1;
@@ -1857,17 +2024,23 @@
 
             var bl = document.getElementById('adminBookingList');
             if (bl) {
-                var rows = bookedUsers.map(function (u) {
-                    var a = D.accounts[u], b = a.booking;
+                var rows = [];
+                bookedUsers.forEach(function (u) {
+                    var a = D.accounts[u];
+                    Object.keys(a.bookings).forEach(function (sid) {
+                    var b = a.bookings[sid];
                     var wl = waLink(a.phone, reminderText(salonById(D, b.salonId) || salon));
-                    return '<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
+                    var ses = salonById(D, b.salonId);
+                    rows.push('<li class="flex flex-wrap justify-between items-center gap-2 py-3 border-b border-matn-sand/60">' +
                         '<span><strong>' + esc(a.name) + '</strong> <span class="text-matn-muted">@' + esc(u) + '</span>' +
                             (a.phone ? ' <span class="text-[10px] text-matn-muted" dir="ltr">' + esc(a.phone) + '</span>' : ' <span class="text-[10px] text-red-700">بلا رقم</span>') + '</span>' +
                         '<span class="flex flex-wrap items-center gap-3">' +
+                            (ses ? ('<span class="text-matn-muted">' + esc(ses.title).slice(0, 22) + '</span>') : '') +
                             '<span class="matn-code">' + esc(b.code) + '</span>' +
                             '<span class="text-matn-muted">' + esc(fmtDate(b.at)) + '</span>' +
                             (wl ? '<a href="' + esc(wl) + '" target="_blank" rel="noopener" class="bg-[#25D366] text-white px-2.5 py-1.5 rounded-lg font-bold">تذكير واتساب</a>' : '') +
-                        '</span></li>';
+                        '</span></li>');
+                    });
                 });
                 bl.innerHTML = rows.length ? rows.join('') : '<li class="text-matn-muted py-2">لا توجد حجوزات بعد.</li>';
             }
@@ -1900,7 +2073,10 @@
             var feats = document.getElementById('adminFeatures');
             if (feats) {
                 var list = [
-                    ['الصالونات', 'إضافة صالون · تعديله · حذفه · تعيين الجلسة القادمة', 'sec-salons', 'salons'],
+                    ['الصالونات', 'إضافة صالون · تعديله · حذفه · المدينة ومكان اللقاء', 'sec-salons', 'salons'],
+                    ['فروعنا', 'افتح فرعاً في أي مدينة بالمملكة مع موقعه ونوعه', 'sec-branches', 'branches'],
+                    ['كتاب الأسبوع', 'اخترنا لكم: الكتاب والغلاف والنبذة', 'sec-book', 'book'],
+                    ['النقاش والتصويت', 'تصويت للأعضاء + مشاركات الكتاب والجلسة', 'sec-engage', 'engage'],
                     ['الأعضاء', 'إضافة عضو · منح وسحب الصلاحيات · نقاط · كلمة مرور · حذف', 'sec-members', 'members'],
                     ['الحجوزات', 'كل حجز باسم صاحبه ورقم تذكرته وتاريخه', 'sec-bookings', 'bookings'],
                     ['الشركاء', 'إضافة شريك أو حذفه من دليل الشركاء', 'sec-partners', 'partners'],
@@ -1959,12 +2135,20 @@
 
         /* الصالونات */
         renderSalons(s);
-        renderHomeSalons(s);
         renderBranches(s);
         renderBook(s);
         renderPosts(s);
         renderPoll(s);
+        renderExcellence(s);
+        renderFooterBranches(s);
+        renderMessages(s);
+        renderAdminMessages(s);
         renderAdminExtra(s);
+
+        /* ما يظهر للمشرف العام فقط */
+        document.querySelectorAll('[data-super-only]').forEach(function (el) {
+            el.classList.toggle('hidden', !s.user.super);
+        });
 
         /* إظهار الأقسام حسب صلاحيات المستخدم — بعد منطق البوابة ليكون هو الفصل */
         document.querySelectorAll('[data-need-perm]').forEach(function (el) {
@@ -2085,8 +2269,7 @@
 
     /* قوائم اللوحة: الفروع · الكتاب · التصويت والمشاركات */
     function renderAdminExtra(s) {
-        var bl = document.getElementById('adminBranchList');
-        if (bl) {
+        var bl = document.getElementById('adminBranchList');        if (bl) {
             var list = s.branches || [];
             bl.innerHTML = list.length ? list.map(function (b) {
                 var lk = safeUrl(b.link);
@@ -2142,29 +2325,6 @@
         }
     }
 
-    /* حتى ثلاثة صالونات مميزة في الصفحة الرئيسية */
-    function renderHomeSalons(s) {
-        var box = document.getElementById('homeSalons');
-        if (!box) return;
-        var feat = s.salon || {};
-        var list = (s.salons || []).filter(function (x) { return x.home && x.id !== feat.id; }).slice(0, 3);
-        if (!list.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-        box.classList.remove('hidden');
-        var d = fullDoc();
-        box.innerHTML = '<h3 class="font-amiri text-2xl font-bold text-matn-emerald text-center mb-5">صالونات قادمة في نادينا</h3>' +
-            '<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">' + list.map(function (x) {
-                var left = seatsLeftOf(d, x);
-                var br = salonBranch(s, x.branchId);
-                return '<a href="booking.html" class="block bg-white rounded-3xl border border-matn-sand shadow-sm p-5 hover:border-matn-gold transition">' +
-                    '<div class="text-[10px] font-bold text-matn-gold">' + esc(x.city || '') + (br ? (' · ' + esc(br.name)) : '') + '</div>' +
-                    '<div class="font-amiri text-lg font-bold text-matn-emerald mt-1 leading-snug">' + esc(x.title) + '</div>' +
-                    (x.when ? '<div class="text-[11px] text-matn-muted mt-1.5">📅 ' + esc(x.when) + '</div>' : '') +
-                    (x.startsAt ? '<div class="text-[11px] text-matn-muted">🕐 ' + esc(salonTimeRange(x)) + ' · ' + durLabel(x.durationMin) + '</div>' : '') +
-                    '<div class="text-[11px] text-matn-muted mt-1">' + brModeLabel(x.mode) + ' · ' + (left > 0 ? (num(left) + ' مقعداً متاحاً') : 'اكتمل العدد') + '</div>' +
-                '</a>';
-            }).join('') + '</div>';
-    }
-
     /* قائمة الصالونات في اللوحة */
     function renderSalons(s) {
         var sl = document.getElementById('adminSalonList');
@@ -2173,13 +2333,15 @@
         var list = s.salons || [];
         sl.innerHTML = list.length ? list.map(function (x) {
             var tk = takenOf(d, x.id);
-            return '<li class="border border-matn-sand rounded-2xl p-4 ' + (x.featured ? 'bg-matn-creamDark' : 'bg-white') + '">' +
+            var isNext = (x.id === ((featuredSalon(d) || {}).id));
+            return '<li class="border rounded-2xl p-4 ' + (isNext ? 'border-matn-gold bg-matn-creamDark' : 'border-matn-sand bg-white') + '">' +
                 '<div class="flex flex-wrap items-start justify-between gap-3">' +
                     '<div class="min-w-0">' +
                         '<div class="font-bold text-sm">' + esc(x.title) +
-                            (x.featured ? ' <span class="text-[10px] font-bold bg-matn-gold/25 text-matn-emerald px-1.5 py-0.5 rounded">الجلسة القادمة</span>' : '') + '</div>' +
+                            (isNext ? ' <span class="text-[10px] font-bold bg-matn-gold/30 text-matn-emerald px-1.5 py-0.5 rounded">⭐ الأقرب موعداً — تُعرض في الرئيسية</span>' : '') + '</div>' +
                         '<div class="text-[11px] text-matn-muted mt-1">' + esc(x.when || '—') + ' • ' + esc(x.where || '—') + '</div>' +
                         '<div class="text-[11px] text-matn-muted mt-0.5">الميسّر: ' + esc(x.facilitator || '—') + ' · المحجوز: ' + num(tk) + ' من ' + num(x.capacity || 0) + '</div>' +
+                        (x.venue ? ('<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + esc(venueText(x)) + '</span>' + (safeUrl(x.venueLink) ? ' · 📍 رابط المكان محفوظ' : '') + '</div>') : '<div class="text-[11px] mt-0.5 text-amber-700">📍 لم يُحدَّد مكان اللقاء</div>') +
                         '<div class="text-[11px] text-matn-muted mt-0.5">' + esc(x.city || 'بلا مدينة') + (salonBranch(s, x.branchId) ? (' · ' + esc(salonBranch(s, x.branchId).name)) : '') +
                             (x.startsAt ? (' · 🕐 ' + esc(salonTimeRange(x)) + ' · ' + durLabel(x.durationMin)) : '') + '</div>' +
                         '<div class="text-[11px] mt-0.5"><span class="font-bold text-matn-emerald">' + modeLabel(x.mode) + '</span>' +
@@ -2193,8 +2355,6 @@
                     '</div>' +
                     '<div class="flex flex-wrap items-center gap-3 text-xs">' +
                         '<button type="button" data-salon-edit="' + esc(x.id) + '" class="text-matn-emerald font-bold hover:underline">تعديل</button>' +
-                        '<button type="button" data-salon-home="' + esc(x.id) + '" class="text-matn-muted font-bold hover:underline">' + (x.home ? 'إزالة من الرئيسية' : 'أظهره في الرئيسية') + '</button>' +
-                        (x.featured ? '' : '<button type="button" data-salon-feature="' + esc(x.id) + '" class="text-matn-muted font-bold hover:underline">تعيين كقادم</button>') +
                         '<button type="button" data-salon-del="' + esc(x.id) + '" class="text-red-700 font-bold hover:underline">حذف</button>' +
                     '</div>' +
                 '</div></li>';
@@ -2202,26 +2362,8 @@
         sl.querySelectorAll('[data-salon-edit]').forEach(function (b) {
             b.addEventListener('click', function () { salonForm(b.getAttribute('data-salon-edit')); });
         });
-        sl.querySelectorAll('[data-salon-feature]').forEach(function (b) {
-            b.addEventListener('click', function () { setFeaturedSalon(b.getAttribute('data-salon-feature')); });
-        });
         sl.querySelectorAll('[data-salon-del]').forEach(function (b) {
             b.addEventListener('click', function () { deleteSalon(b.getAttribute('data-salon-del')); });
-        });
-        sl.querySelectorAll('[data-salon-home]').forEach(function (b) {
-            b.addEventListener('click', function () {
-                var sid = b.getAttribute('data-salon-home');
-                var d2 = fullDoc();
-                var t = salonById(d2, sid);
-                if (!t) return;
-                if (!t.home && d2.salons.filter(function (x) { return x.home && x.id !== sid; }).length >= 3) {
-                    toast('يمكنك تحديد ثلاثة صالونات للرئيسية كحد أقصى.', 'error');
-                    return;
-                }
-                t.home = !t.home;
-                saveDoc(d2); refresh();
-                toast(t.home ? 'يظهر الآن في الصفحة الرئيسية' : 'أُزيل من الصفحة الرئيسية', 'ok');
-            });
         });
     }
 
@@ -2463,6 +2605,240 @@
     }
 
     /* ======================================================================
+       التواجد والتميّز (وسام التميز)
+       ====================================================================== */
+    function hoursText(min) {
+        min = min || 0;
+        var h = Math.floor(min / 60), m = min % 60;
+        if (h && m) return h + ' ساعة و' + m + ' دقيقة';
+        if (h === 1) return 'ساعة';
+        if (h === 2) return 'ساعتان';
+        if (h > 2) return h + ' ساعات';
+        return m + ' دقيقة';
+    }
+    function memberStats(u, d) {
+        var a = (d.accounts || {})[u] || {};
+        var replies = (d.posts || []).filter(function (p) { return p.user === u; }).length;
+        var points = a.points || 0, minutes = a.minutes || 0;
+        return {
+            u: u, name: a.name || u, avatar: a.avatar || '', points: points,
+            replies: replies, minutes: minutes,
+            score: points + replies * 15 + Math.floor(minutes / 5)
+        };
+    }
+    function topMembers(d, n) {
+        return Object.keys(d.accounts || {})
+            .filter(function (u) { return !d.accounts[u].system; })
+            .map(function (u) { return memberStats(u, d); })
+            .sort(function (x, y) { return y.score - x.score || y.points - x.points; })
+            .slice(0, n || 6);
+    }
+    /* عدّاد التواجد: دقيقة لكل دقيقة والصفحة ظاهرة */
+    var presenceTimer = null;
+    function startPresence() {
+        if (presenceTimer) return;
+        presenceTimer = window.setInterval(function () {
+            if (document.hidden) return;
+            var d = fullDoc();
+            var u = d.authUser;
+            if (!u || !d.accounts[u] || d.accounts[u].system) return;
+            d.accounts[u].minutes = (d.accounts[u].minutes || 0) + 1;
+            saveDoc(d);
+        }, 60000);
+    }
+    function renderExcellence(s) {
+        var box = document.getElementById('excellenceBox');
+        if (!box) return;
+        var d = fullDoc();
+        var list = topMembers(d, 6);
+        if (!list.length) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        var medals = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅'];
+        box.innerHTML =
+            '<div class="text-center mb-6">' +
+                '<div class="text-[11px] font-bold tracking-[.3em] text-matn-gold">نادي مَتن</div>' +
+                '<h2 class="font-amiri text-3xl font-bold text-matn-emerald mt-2">🏵 وسام التميّز</h2>' +
+                '<p class="text-xs text-matn-muted mt-2">أكثر الأعضاء تفاعلاً — بالنقاط وساعات التواجد والردود</p>' +
+            '</div>' +
+            '<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">' + list.map(function (m, i) {
+                var av = safeImg(m.avatar);
+                return '<div class="relative rounded-3xl p-[2px] bg-gradient-to-br from-matn-gold via-matn-goldLight to-matn-emeraldDark shadow-sm">' +
+                    '<div class="bg-white rounded-[22px] p-4 text-center h-full">' +
+                        '<div class="text-2xl">' + medals[i] + '</div>' +
+                        (av
+                            ? '<img src="' + esc(av) + '" alt="' + esc(m.name) + '" class="w-16 h-16 rounded-full object-cover mx-auto mt-2 border-2 border-matn-gold" data-zoom="' + esc(av) + '">'
+                            : '<div class="w-16 h-16 rounded-full mx-auto mt-2 border-2 border-matn-gold bg-matn-creamDark flex items-center justify-center font-amiri text-2xl font-bold text-matn-emerald">' + esc(String(m.name || '؟').charAt(0)) + '</div>') +
+                        '<div class="font-bold text-sm mt-2 text-matn-emerald">' + esc(m.name) + '</div>' +
+                        '<div class="grid grid-cols-3 gap-1 mt-3 text-[10px]">' +
+                            '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + num(m.points) + '</div><div class="text-matn-muted">نقطة</div></div>' +
+                            '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + esc(hoursText(m.minutes)) + '</div><div class="text-matn-muted">تواجد</div></div>' +
+                            '<div class="bg-matn-cream rounded-lg py-1.5"><div class="font-bold text-matn-emerald">' + num(m.replies) + '</div><div class="text-matn-muted">ردود</div></div>' +
+                        '</div>' +
+                    '</div></div>';
+            }).join('') + '</div>';
+    }
+    /* روابط الفروع في أسفل الصفحة */
+    function renderFooterBranches(s) {
+        var boxes = document.querySelectorAll('[data-footer-branches]');
+        if (!boxes.length) return;
+        var list = s.branches || [];
+        boxes.forEach(function (el) {
+            el.innerHTML = list.length ? list.map(function (b) {
+                var lk = safeUrl(b.link);
+                return '<div><a href="' + esc(lk || '#') + '"' + (lk ? ' target="_blank" rel="noopener"' : '') + ' class="hover:text-white transition">📍 ' +
+                    esc(b.name || b.city) + ' <span class="text-white/50">( ' + esc(b.city) + ' · ' + brModeLabel(b.mode) + ' )</span></a></div>';
+            }).join('') : '<div class="text-white/50">لا توجد فروع بعد.</div>';
+        });
+    }
+
+    /* ======================================================================
+       الرسائل الخاصة
+       ====================================================================== */
+    function msgPartner(m, me) { return m.from === me ? m.to : m.from; }
+    function myMessages(s) {
+        var me = s.user.username;
+        return (s.messages || []).filter(function (m) { return m.from === me || m.to === me; });
+    }
+    function sendMessage(to, text, asUser) {
+        var d = fullDoc();
+        var from = asUser || d.authUser;
+        if (!from) { requireLogin('الرسائل'); return false; }
+        if (!to || !d.accounts[to]) { toast('اختر عضواً صحيحاً.', 'error'); return false; }
+        if (!String(text || '').trim()) { toast('اكتب نص الرسالة.', 'error'); return false; }
+        var acc = d.accounts[from] || {};
+        if (!acc.super && !acc.isAdmin && (acc.points || 0) < 500) {
+            toast('الرسائل الخاصة تُفتح بعد 500 نقطة.', 'error'); return false;
+        }
+        if (!Array.isArray(d.messages)) d.messages = [];
+        d.messages.unshift({
+            id: 'ms-' + rnd(6), from: from, to: to,
+            text: String(text).slice(0, 2000), at: new Date().toISOString(), read: false
+        });
+        saveDoc(d); refresh();
+        toast('أُرسلت الرسالة', 'ok');
+        return true;
+    }
+    function memberOptions(d, exclude) {
+        return Object.keys(d.accounts || {}).filter(function (u) { return u !== exclude; })
+            .map(function (u) {
+                var a = d.accounts[u];
+                return '<option value="' + esc(u) + '">' + esc(a.name || u) + (a.system ? ' (الدعم الفني)' : '') + '</option>';
+            }).join('');
+    }
+    function newMessageForm(asSupport) {
+        if (!asSupport && !load().canMessage) { toast('الرسائل الخاصة تُفتح بعد 500 نقطة.', 'error'); return; }
+        var d = fullDoc();
+        var me = asSupport ? 'support' : d.authUser;
+        modal({
+            title: 'رسالة جديدة',
+            body: '<label class="matn-field"><span>إلى</span><select class="matn-input" id="nmTo">' + memberOptions(d, me) + '</select></label>' +
+                  '<label class="matn-field"><span>الرسالة</span><textarea class="matn-input" id="nmText" rows="4" placeholder="اكتب رسالتك…"></textarea></label>' +
+                  (asSupport ? '<p class="text-[10px] text-matn-muted">ستُرسل باسم: الدعم الفني لنادي القراءة</p>' : ''),
+            footer: '<button type="button" id="nmGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إرسال</button>' + okBtn('إلغاء'),
+            ready: function (w) {
+                w.querySelector('#nmGo').addEventListener('click', function () {
+                    var ok = sendMessage(w.querySelector('#nmTo').value, w.querySelector('#nmText').value, asSupport ? 'support' : null);
+                    if (ok) closeModal();
+                });
+            }
+        });
+    }
+    function openThread(other) {
+        var s = load();
+        var me = s.user.username;
+        var d = fullDoc();
+        if (!d.accounts[other]) return;
+        var thread = (s.messages || []).filter(function (m) {
+            return (m.from === me && m.to === other) || (m.from === other && m.to === me);
+        });
+        /* علّمها مقروءة */
+        var changed = false;
+        (d.messages || []).forEach(function (m) { if (m.from === other && m.to === me && !m.read) { m.read = true; changed = true; } });
+        if (changed) saveDoc(d);
+        modal({
+            title: 'محادثة: ' + (d.accounts[other].name || other),
+            body: '<div class="space-y-2 max-h-[45vh] overflow-auto" id="thList">' + (thread.length ? thread.slice().reverse().map(function (m) {
+                    var mine = m.from === me;
+                    return '<div class="' + (mine ? 'text-left' : 'text-right') + '">' +
+                        '<div class="inline-block max-w-[85%] text-right rounded-2xl px-3 py-2 text-xs ' + (mine ? 'bg-matn-emerald text-white' : 'bg-matn-cream border border-matn-sand') + '">' +
+                        esc(m.text) + '</div>' +
+                        '<div class="text-[9px] text-matn-muted mt-0.5">' + esc(d.accounts[m.from] ? (d.accounts[m.from].name || m.from) : m.from) + ' · ' + esc(fmtDate(m.at)) + '</div></div>';
+                }).join('') : '<p class="text-xs text-matn-muted">لا رسائل بعد — ابدأ الكتابة.</p>') + '</div>' +
+                  '<label class="matn-field mt-3"><span>ردّك</span><textarea class="matn-input" id="thText" rows="2"></textarea></label>',
+            footer: '<button type="button" id="thGo" class="bg-matn-emerald hover:bg-matn-emeraldLight text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">إرسال</button>' + okBtn('إغلاق'),
+            ready: function (w) {
+                w.querySelector('#thGo').addEventListener('click', function () {
+                    if (sendMessage(other, w.querySelector('#thText').value)) closeModal();
+                });
+            }
+        });
+        window.setTimeout(function () { render(); }, 300);
+    }
+    function renderMessages(s) {
+        var box = document.getElementById('msgSection');
+        if (!box) return;
+        if (!s.signedIn) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        var lock = document.getElementById('msgLocked');
+        var mine = myMessages(s);
+        var byOther = {};
+        mine.forEach(function (m) {
+            var o = msgPartner(m, s.user.username);
+            if (!byOther[o]) byOther[o] = { other: o, last: m, unread: 0, n: 0 };
+            byOther[o].n++;
+            if (m.from === o && !m.read) byOther[o].unread++;
+        });
+        var list = Object.keys(byOther).map(function (k) { return byOther[k]; })
+            .sort(function (a, b2) { return new Date(b2.last.at) - new Date(a.last.at); });
+        var canMsg = s.canMessage;
+        if (lock) {
+            if (canMsg) { lock.classList.add('hidden'); lock.textContent = ''; }
+            else {
+                var need = 500 - (s.user.points || 0);
+                lock.classList.remove('hidden');
+                lock.innerHTML = '🔒 تُفتح الرسائل الخاصة بعد <strong>500 نقطة</strong> — تحتاج <strong>' + num(need) + '</strong> نقطة. رصيدك: ' + num(s.user.points || 0) + ' نقطة.';
+            }
+        }
+        var nm = document.querySelectorAll('[data-action="new-message"]');
+        nm.forEach(function (b) { b.classList.toggle('hidden', !canMsg); });
+        var tl = document.getElementById('msgThreads');
+        if (!tl) return;
+        tl.innerHTML = list.length ? list.map(function (t) {
+            var a = (s.accounts || {})[t.other] || {};
+            var av = safeImg(a.avatar || '');
+            var op = canMsg || t.unread;
+            return '<button type="button" data-thread="' + esc(t.other) + '" class="w-full text-right flex items-center gap-3 border border-matn-sand rounded-2xl p-3 hover:border-matn-gold transition bg-white">' +
+                    (av ? '<img src="' + esc(av) + '" class="w-10 h-10 rounded-full object-cover shrink-0" alt="">' : '<div class="w-10 h-10 rounded-full bg-matn-creamDark flex items-center justify-center font-bold text-matn-emerald shrink-0">' + esc(String(a.name || t.other).charAt(0)) + '</div>') +
+                    '<span class="min-w-0 flex-1"><span class="block font-bold text-xs text-matn-emerald">' + esc(a.name || t.other) + (t.unread ? (' <span class="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">' + num(t.unread) + ' جديد</span>') : '') + '</span>' +
+                    '<span class="block text-[11px] text-matn-muted truncate">' + esc(String(t.last.text).slice(0, 48)) + '</span></span>' +
+                    '<span class="text-[10px] text-matn-muted shrink-0">' + esc(fmtDate(t.last.at)) + '</span>' +
+                '</button>';
+        }).join('') : '<p class="text-xs text-matn-muted">لا رسائل بعد.' + (canMsg ? ' ابدأ برسالة جديدة.' : '') + '</p>';
+        tl.querySelectorAll('[data-thread]').forEach(function (b) {
+            b.addEventListener('click', function () { openThread(b.getAttribute('data-thread')); });
+        });
+    }
+    /* لوحة المشرف العام: كل الرسائل الخاصة (للمشرف العام فقط) */
+    function renderAdminMessages(s) {
+        var box = document.getElementById('adminMsgList');
+        if (!box) return;
+        if (!s.user.super) { box.innerHTML = '<li class="text-matn-muted py-2">هذه الرسائل تظهر للمشرف العام فقط.</li>'; return; }
+        var d = fullDoc();
+        var ms = (s.messages || []).slice(0, 40);
+        box.innerHTML = ms.length ? ms.map(function (m) {
+            var f = (d.accounts[m.from] || {}).name || m.from;
+            var t = (d.accounts[m.to] || {}).name || m.to;
+            return '<li class="border border-matn-sand rounded-xl p-3">' +
+                '<div class="flex flex-wrap items-center justify-between gap-2 text-[11px]">' +
+                    '<span><strong class="text-matn-emerald">' + esc(f) + '</strong> ← ' + esc(t) + '</span>' +
+                    '<span class="text-matn-muted">' + esc(fmtDate(m.at)) + (m.read ? '' : ' · غير مقروءة') + '</span>' +
+                '</div>' +
+                '<p class="text-xs mt-1 whitespace-pre-line">' + esc(m.text) + '</p>' +
+            '</li>';
+        }).join('') : '<li class="text-matn-muted py-2">لا رسائل خاصة.</li>';
+    }
+
+    /* ======================================================================
        الربط
        ====================================================================== */
     document.addEventListener('click', function (e) {
@@ -2489,6 +2865,9 @@
             if (u0 && d0.accounts[u0]) { d0.accounts[u0].phone = ''; saveDoc(d0); refresh(); }
         }
         else if (a === 'copy-reminder') copyReminder();
+        else if (a === 'avatar') avatarForm();
+        else if (a === 'new-message') newMessageForm(false);
+        else if (a === 'support-reply') newMessageForm(true);
         else if (a === 'toggle-branches') {
             var mnu = document.getElementById('branchesMenu');
             if (mnu) mnu.classList.toggle('hidden');
@@ -2557,7 +2936,7 @@
         });
     }
 
-    function boot() { wireAccountPage(); refresh(); }
+    function boot() { wireAccountPage(); refresh(); startPresence(); }
 
     /* تحديث العدّ التنازلي حيّاً بلا إعادة رسم (كي لا يُفسد ما يكتبه المستخدم) */
     window.setInterval(function () {
